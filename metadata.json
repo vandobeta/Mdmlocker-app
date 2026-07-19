@@ -1,0 +1,6 @@
+{
+  "name": "DBS FamilyGuard",
+  "description": "Enterprise-grade child device monitoring, Knox-Guard locks, and dynamic EMM policy enforcement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

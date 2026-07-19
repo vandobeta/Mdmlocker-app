@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">DBS FamilyGuard</string>
+    <string name="accessibility_description">FamilyGuard Accessibility Service monitors launched packages to block unauthorized configuration panels, settings, and bypass utilities.</string>
+    <string name="accessibility_service_label">DBS FamilyGuard Policy Guardian</string>
+</resources>
