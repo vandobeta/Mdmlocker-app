@@ -250,6 +250,27 @@ class ScheduleEnforcerService : Service() {
                         }
                     }
 
+                    // Enforce lock-mode and EMM screen capture policies (screenshot & screen recording block system-wide)
+                    if (isAdminActive) {
+                        try {
+                            val sharedPrefs = getSharedPreferences("familyguard_prefs", Context.MODE_PRIVATE)
+                            val isProvisioned = sharedPrefs.getBoolean("is_provisioned", false)
+                            val isParentLocked = policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
+                            val isLockActive = !isProvisioned || isParentLocked
+
+                            val explicitScreenCapturePolicy = policies.firstOrNull { it.key == "disallowScreenCapture" }
+                            val isExplicitlyDisabled = explicitScreenCapturePolicy?.value?.lowercase() == "true"
+                            val shouldDisableCapture = isLockActive || isExplicitlyDisabled
+
+                            if (dpm.getScreenCaptureDisabled(adminComponent) != shouldDisableCapture) {
+                                Log.i(TAG, "[POLICY ENFORCEMENT] Screen capture disabled state mismatch. Forcing screenCaptureDisabled=$shouldDisableCapture (lockActive=$isLockActive, explicit=$isExplicitlyDisabled)")
+                                dpm.setScreenCaptureDisabled(adminComponent, shouldDisableCapture)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to apply screen capture policy", e)
+                        }
+                    }
+
                     // 4. Update status notifications dynamically
                     if (uniqueBlockedNames.isNotEmpty()) {
                         updateNotification("Restricted access active: ${uniqueBlockedNames.size} app policies suspended")

@@ -739,6 +739,34 @@ fun MainDashboardConsole(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            val screenShareActive by viewModel.screenShareActive.collectAsState()
+            val screenControlActive by viewModel.screenControlActive.collectAsState()
+
+            if (screenShareActive || screenControlActive) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFD32F2F))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CastConnected,
+                        contentDescription = "Cast Connected",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (screenControlActive) "🔴 REMOTE CONTROL CONSOLE ACTIVE" else "🔴 REMOTE SCREEN SHARING ACTIVE",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             // Enterprise Sync Header Card
             Card(
                 modifier = Modifier
@@ -1017,6 +1045,25 @@ fun MainDashboardConsole(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     item {
+                        MdmDeviceQuickControls(viewModel)
+                    }
+
+                    item {
+                        MdmRemoteScreenSimulator(viewModel)
+                    }
+
+                    item {
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "✍️ INJECT EMM SYSTEM POLICY",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    item {
                         // Injection form
                         MdmPolicyInjectionForm(
                             onInject = { key, value, type, flag ->
@@ -1029,9 +1076,9 @@ fun MainDashboardConsole(
 
                     item {
                         HorizontalDivider()
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Active EMM Database Settings",
+                            text = "📋 Active EMM Database Settings",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary
@@ -1053,11 +1100,20 @@ fun MainDashboardConsole(
                                 onUpdateValue = { newVal ->
                                     viewModel.addOrUpdatePolicy(policy.copy(value = newVal))
                                 },
+                                onUpdateFlag = { newFlag ->
+                                    viewModel.addOrUpdatePolicy(policy.copy(permissionFlag = newFlag))
+                                },
                                 onDelete = {
                                     viewModel.deletePolicy(policy)
                                 }
                             )
                         }
+                    }
+
+                    item {
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+                        MdmKidUserModeSimulator(policies, viewModel)
                     }
                 }
             } else {
@@ -1081,10 +1137,12 @@ fun MainDashboardConsole(
 /**
  * Renders a row within the Experimental MDM Control Tables.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MdmPolicyRow(
     policy: MdmPolicyEntity,
     onUpdateValue: (String) -> Unit,
+    onUpdateFlag: (String) -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -1167,6 +1225,33 @@ fun MdmPolicyRow(
                         .fillMaxWidth()
                         .testTag("policy_input_${policy.key}")
                 )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Enforce On Kid Mode:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = policy.permissionFlag == "GREY_OUT",
+                        onClick = { onUpdateFlag("GREY_OUT") },
+                        label = { Text("🔒 Grey Out") }
+                    )
+                    FilterChip(
+                        selected = policy.permissionFlag == "PERMIT_KID",
+                        onClick = { onUpdateFlag("PERMIT_KID") },
+                        label = { Text("🔓 Allow user change") }
+                    )
+                }
             }
         }
     }
@@ -1965,6 +2050,368 @@ fun MockAndroidHomeScreen() {
                                 contentDescription = name,
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MdmDeviceQuickControls(viewModel: MainViewModel) {
+    val isTorchOn by viewModel.isTorchOn.collectAsState()
+    val isTorchBlinking by viewModel.isTorchBlinking.collectAsState()
+    val isBluetoothOn by viewModel.isBluetoothOn.collectAsState()
+    val isWifiOn by viewModel.isWifiOn.collectAsState()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "⚡ MDM DEVICE QUICK CONTROLS",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Administrators can run hardware commands instantly on the child/employee device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+            // Row 1: Torch & Wifi
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Torch", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = isTorchOn && !isTorchBlinking,
+                            onCheckedChange = { viewModel.toggleTorch(it) }
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Torch Blink", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = isTorchBlinking,
+                            onCheckedChange = { viewModel.toggleTorchBlinking(it) }
+                        )
+                    }
+                }
+            }
+
+            // Row 2: Bluetooth & Wifi
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Bluetooth", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = isBluetoothOn,
+                            onCheckedChange = { viewModel.toggleBluetooth(it) }
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Wi-Fi", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = isWifiOn,
+                            onCheckedChange = { viewModel.toggleWifi(it) }
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+            // Navigation Actions: Go Home / Go Back
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = { viewModel.triggerGoHome() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Home, contentDescription = "Home")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Go Home", style = MaterialTheme.typography.bodySmall)
+                }
+
+                Button(
+                    onClick = { viewModel.triggerGoBack() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Go Back", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MdmRemoteScreenSimulator(viewModel: MainViewModel) {
+    val screenShareActive by viewModel.screenShareActive.collectAsState()
+    val screenControlActive by viewModel.screenControlActive.collectAsState()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "🖥️ REMOTE SCREEN SUPPORT",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text(
+                text = "Initiate real-time screen share or remote screen control to help employees and kids troubleshoot device issues.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Screen Share Toggle Button
+                Button(
+                    onClick = { viewModel.toggleScreenShare(!screenShareActive) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (screenShareActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (screenShareActive) Icons.Default.CancelPresentation else Icons.Default.ScreenShare,
+                        contentDescription = "Screen Share"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (screenShareActive) "Stop Share" else "Screen Share",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                // Screen Control Toggle Button
+                Button(
+                    onClick = { viewModel.toggleScreenControl(!screenControlActive) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (screenControlActive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (screenControlActive) Icons.Default.CancelPresentation else Icons.Default.SettingsRemote,
+                        contentDescription = "Screen Control"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (screenControlActive) "Stop Control" else "Remote Control",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            // Visual Simulation Frame
+            AnimatedVisibility(visible = screenShareActive || screenControlActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(2.dp, Color(0xFFF44336), RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.9f))
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Simulated device view
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(Color.Red)
+                            )
+                            Text(
+                                text = if (screenControlActive) "LIVE REMOTE DEVICE CONTROL ACTIVE" else "LIVE REMOTE STREAMING ACTIVE",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            text = "Admin Node: dev_console_v2",
+                            color = Color.LightGray,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        Text(
+                            text = if (screenControlActive) "🕹️ Dispatched administrative drag & click gesture packets" else "🎥 Streaming compressed VP8 frame buffers to administrative database",
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun MdmKidUserModeSimulator(
+    policies: List<MdmPolicyEntity>,
+    viewModel: MainViewModel
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "👶 KID / EMPLOYEE SETTINGS PANELS (SIMULATION)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+            Text(
+                text = "Below is how the settings appear to the user. Greyed-out policies cannot be modified. Allowed policies can be modified locally.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+            if (policies.isEmpty()) {
+                Text(
+                    text = "No active policies to simulate.",
+                    color = MaterialTheme.colorScheme.outline,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                policies.forEach { policy ->
+                    val isGreyedOut = policy.permissionFlag == "GREY_OUT"
+                    val checked = policy.value.lowercase() == "true"
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isGreyedOut) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                else Color.Transparent
+                            )
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isGreyedOut) Icons.Default.Lock else Icons.Default.LockOpen,
+                                    contentDescription = "Lock State",
+                                    tint = if (isGreyedOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = policy.key,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isGreyedOut) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = if (isGreyedOut) "🔒 Locked by Admin" else "🔓 Allowed to change back",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isGreyedOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        if (policy.valueType == "boolean") {
+                            Switch(
+                                checked = checked,
+                                onCheckedChange = { newVal ->
+                                    if (!isGreyedOut) {
+                                        viewModel.addOrUpdatePolicy(policy.copy(value = newVal.toString()))
+                                        viewModel.addManualAuditLog(
+                                            "KID_MODIFICATION",
+                                            "Kid modified allowed policy '${policy.key}' to $newVal"
+                                        )
+                                    }
+                                },
+                                enabled = !isGreyedOut
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = policy.value,
+                                onValueChange = { newVal ->
+                                    if (!isGreyedOut) {
+                                        viewModel.addOrUpdatePolicy(policy.copy(value = newVal))
+                                        viewModel.addManualAuditLog(
+                                            "KID_MODIFICATION",
+                                            "Kid modified allowed policy '${policy.key}' to $newVal"
+                                        )
+                                    }
+                                },
+                                enabled = !isGreyedOut,
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .width(120.dp)
+                                    .height(48.dp)
                             )
                         }
                     }

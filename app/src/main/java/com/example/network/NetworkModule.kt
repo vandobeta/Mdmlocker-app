@@ -23,8 +23,17 @@ object NetworkModule {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    // Using a reliable, mockable base URL that satisfies Retrofit while we can also mock network responses or let parents simulate changes.
-    private const val BASE_URL = "https://dbs-familyguard-default-rtdb.firebaseio.com/"
+    // Dynamically retrieve the database URL configured in AI Studio Secrets or default to the default Firebase DB
+    private val BASE_URL: String by lazy {
+        var url = com.example.BuildConfig.FIREBASE_DATABASE_URL
+        if (url.isNullOrBlank()) {
+            url = "https://dbs-familyguard-default-rtdb.firebaseio.com/"
+        }
+        if (!url.endsWith("/")) {
+            url += "/"
+        }
+        url
+    }
 
     val api: FirebaseMockApi by lazy {
         Retrofit.Builder()

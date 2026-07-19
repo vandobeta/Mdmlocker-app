@@ -1,0 +1,197 @@
+/* DBS FamilyGuard Enterprise Dashboard Style Sheet */
+
+/* Google Fonts - Inter & JetBrains Mono */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+#terminal-screen {
+    font-family: 'JetBrains+Mono', 'Courier New', monospace;
+}
+
+/* Custom Checkbox Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 22px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #374151; /* gray-700 */
+    transition: .3s;
+    border-radius: 9999px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #9ca3af; /* gray-400 */
+    transition: .3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #F44336; /* Brand Red */
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px);
+    background-color: #ffffff;
+}
+
+input:disabled + .slider {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Tab Button Styles */
+.tab-btn {
+    flex-grow: 1;
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 8px;
+    color: #9ca3af; /* gray-400 */
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn span {
+    font-size: 1.1rem;
+}
+
+.tab-btn:hover {
+    color: #ffffff;
+    background-color: #232731;
+}
+
+.tab-btn.active {
+    color: #ffffff;
+    background-color: #2d313f;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal Overlay backdrop */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 100;
+    transition: all 0.3s;
+}
+
+.modal-content {
+    transform: scale(0.95);
+    animation: modalPop 0.25s forwards cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+
+@keyframes modalPop {
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Custom Day Selection Chips */
+.day-chip-label {
+    cursor: pointer;
+    flex-grow: 1;
+    text-align: center;
+}
+
+.day-chip-label input + span {
+    display: block;
+    padding: 8px 0;
+    background-color: #232731;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    font-weight: 700;
+    color: #9ca3af;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.day-chip-label input:checked + span {
+    background-color: #F44336;
+    border-color: #F44336;
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(244, 67, 54, 0.3);
+}
+
+.day-chip-label:hover input:not(:checked) + span {
+    background-color: #2d313f;
+    color: #ffffff;
+}
+
+/* Input Fields styling */
+.form-input {
+    width: 100%;
+    background-color: #232731;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #ffffff;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    border-color: #F44336;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #121318;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2d313f;
+    border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #3d4255;
+}
+
+/* Active Highlight Outline */
+.active-device-card {
+    border-color: #F44336 !important;
+    background-color: rgba(244, 67, 54, 0.08) !important;
+    box-shadow: 0 4px 15px rgba(244, 67, 54, 0.1);
+}

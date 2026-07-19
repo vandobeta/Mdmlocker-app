@@ -2,12 +2,20 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.hardware.camera2.CameraManager
+import android.bluetooth.BluetoothAdapter
+import android.net.wifi.WifiManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import com.example.network.NetworkModule
 import com.example.service.ScheduleEnforcerService
 import com.example.receiver.MyDeviceAdminReceiver
+import com.example.service.MyAccessibilityService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -132,6 +140,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Synchronise screen share and control active states with policies flow
+        viewModelScope.launch {
+            policies.collect { plist ->
+                val shareRequest = plist.firstOrNull { it.key == "remoteScreenShareRequest" }?.value?.lowercase() == "true"
+                val controlRequest = plist.firstOrNull { it.key == "remoteScreenControlRequest" }?.value?.lowercase() == "true"
+                if (_screenShareActive.value != shareRequest) {
+                    _screenShareActive.value = shareRequest
+                }
+                if (_screenControlActive.value != controlRequest) {
+                    _screenControlActive.value = controlRequest
+                }
+            }
+        }
+
         // Start real-time background sync loop with Firebase Realtime DB
         startRealtimeSync()
     }
@@ -247,6 +269,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             MdmPolicyEntity("disallowSafeBoot", "true", "boolean", "GREY_OUT"),
             MdmPolicyEntity("disallowUsbFileTransfer", "true", "boolean", "GREY_OUT"),
             MdmPolicyEntity("disallowModifyAccounts", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowScreenCapture", "false", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("allowSettingsModification", "false", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("remoteScreenShareRequest", "false", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("remoteScreenControlRequest", "false", "boolean", "GREY_OUT"),
             MdmPolicyEntity("selfUpdateMode", "false", "boolean", "GREY_OUT"),
             MdmPolicyEntity("customMdmEnterpriseFlag", "ActiveSecurityNode", "string", "PERMIT_KID")
         )
@@ -266,6 +292,180 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             policyDao.deletePolicy(policy)
             _syncStatus.value = "Deleted policy: ${policy.key}"
+        }
+    }
+
+    private var torchJob: Job? = null
+    private val _isTorchOn = MutableStateFlow(false)
+    val isTorchOn: StateFlow<Boolean> = _isTorchOn.asStateFlow()
+
+    private val _isTorchBlinking = MutableStateFlow(false)
+    val isTorchBlinking: StateFlow<Boolean> = _isTorchBlinking.asStateFlow()
+
+    private val _isBluetoothOn = MutableStateFlow(false)
+    val isBluetoothOn: StateFlow<Boolean> = _isBluetoothOn.asStateFlow()
+
+    private val _isWifiOn = MutableStateFlow(false)
+    val isWifiOn: StateFlow<Boolean> = _isWifiOn.asStateFlow()
+
+    fun toggleTorch(enable: Boolean) {
+        _isTorchBlinking.value = false
+        torchJob?.cancel()
+        _isTorchOn.value = enable
+        try {
+            val context = getApplication<Application>()
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cameraManager.cameraIdList.getOrNull(0)
+            if (cameraId != null) {
+                cameraManager.setTorchMode(cameraId, enable)
+                addManualAuditLog("DEVICE_CONTROL", "Flashlight turned ${if (enable) "ON" else "OFF"}")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Flashlight error: ${e.message}")
+        }
+    }
+
+    fun toggleTorchBlinking(enable: Boolean) {
+        _isTorchBlinking.value = enable
+        torchJob?.cancel()
+        if (enable) {
+            _isTorchOn.value = true
+            torchJob = viewModelScope.launch(Dispatchers.Default) {
+                val context = getApplication<Application>()
+                val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                val cameraId = cameraManager.cameraIdList.getOrNull(0)
+                var state = true
+                addManualAuditLog("DEVICE_CONTROL", "Flashlight blinking STARTED")
+                while (_isTorchBlinking.value) {
+                    if (cameraId != null) {
+                        try {
+                            cameraManager.setTorchMode(cameraId, state)
+                        } catch (e: Exception) {}
+                    }
+                    _isTorchOn.value = state
+                    state = !state
+                    delay(500)
+                }
+                // ensure off when done
+                if (cameraId != null) {
+                    try {
+                        cameraManager.setTorchMode(cameraId, false)
+                    } catch (e: Exception) {}
+                }
+                _isTorchOn.value = false
+                addManualAuditLog("DEVICE_CONTROL", "Flashlight blinking STOPPED")
+            }
+        } else {
+            _isTorchOn.value = false
+            try {
+                val context = getApplication<Application>()
+                val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                val cameraId = cameraManager.cameraIdList.getOrNull(0)
+                if (cameraId != null) {
+                    cameraManager.setTorchMode(cameraId, false)
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    fun toggleBluetooth(enable: Boolean) {
+        _isBluetoothOn.value = enable
+        try {
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            if (bluetoothAdapter != null) {
+                if (enable) {
+                    @Suppress("DEPRECATION")
+                    bluetoothAdapter.enable()
+                } else {
+                    @Suppress("DEPRECATION")
+                    bluetoothAdapter.disable()
+                }
+                addManualAuditLog("DEVICE_CONTROL", "Bluetooth turned ${if (enable) "ON" else "OFF"}")
+            } else {
+                addManualAuditLog("DEVICE_CONTROL", "Bluetooth adapter not found (Simulated ${if (enable) "ON" else "OFF"})")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Bluetooth toggle error", e)
+            addManualAuditLog("DEVICE_CONTROL", "Bluetooth toggle failed (Simulated ${if (enable) "ON" else "OFF"})")
+        }
+    }
+
+    fun toggleWifi(enable: Boolean) {
+        _isWifiOn.value = enable
+        try {
+            val context = getApplication<Application>()
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            @Suppress("DEPRECATION")
+            wifiManager.isWifiEnabled = enable
+            addManualAuditLog("DEVICE_CONTROL", "Wi-Fi turned ${if (enable) "ON" else "OFF"}")
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Wi-Fi toggle error", e)
+            addManualAuditLog("DEVICE_CONTROL", "Wi-Fi toggle failed (Simulated ${if (enable) "ON" else "OFF"})")
+        }
+    }
+
+    fun triggerGoHome() {
+        viewModelScope.launch {
+            var executed = false
+            try {
+                val service = MyAccessibilityService.instance
+                if (service != null) {
+                    executed = service.performHomeAction()
+                }
+            } catch (e: Exception) {}
+
+            if (!executed) {
+                // Intent fallback
+                try {
+                    val context = getApplication<Application>()
+                    val intent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                    executed = true
+                } catch (e: Exception) {}
+            }
+            addManualAuditLog("DEVICE_CONTROL", "Triggered 'Go Home' action (Success=$executed)")
+        }
+    }
+
+    fun triggerGoBack() {
+        viewModelScope.launch {
+            var executed = false
+            try {
+                val service = MyAccessibilityService.instance
+                if (service != null) {
+                    executed = service.performBackAction()
+                }
+            } catch (e: Exception) {}
+            addManualAuditLog("DEVICE_CONTROL", "Triggered 'Go Back' action (Success=$executed)")
+        }
+    }
+
+    private val _screenShareActive = MutableStateFlow(false)
+    val screenShareActive: StateFlow<Boolean> = _screenShareActive.asStateFlow()
+
+    private val _screenControlActive = MutableStateFlow(false)
+    val screenControlActive: StateFlow<Boolean> = _screenControlActive.asStateFlow()
+
+    fun toggleScreenShare(enable: Boolean) {
+        _screenShareActive.value = enable
+        viewModelScope.launch {
+            // Also mirror to DPM policies
+            val policy = policyDao.getPolicyByKey("remoteScreenShareRequest") ?: MdmPolicyEntity("remoteScreenShareRequest", "false", "boolean", "GREY_OUT")
+            policyDao.insertOrUpdatePolicy(policy.copy(value = enable.toString()))
+            addManualAuditLog("DEVICE_CONTROL", if (enable) "Administrator initiated Remote Screen Share" else "Remote Screen Share terminated")
+        }
+    }
+
+    fun toggleScreenControl(enable: Boolean) {
+        _screenControlActive.value = enable
+        viewModelScope.launch {
+            // Also mirror to DPM policies
+            val policy = policyDao.getPolicyByKey("remoteScreenControlRequest") ?: MdmPolicyEntity("remoteScreenControlRequest", "false", "boolean", "GREY_OUT")
+            policyDao.insertOrUpdatePolicy(policy.copy(value = enable.toString()))
+            addManualAuditLog("DEVICE_CONTROL", if (enable) "Administrator initiated Remote Screen Control" else "Remote Screen Control terminated")
         }
     }
 
@@ -473,6 +673,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                                 isSynced = false
                                             )
                                         )
+                                    }
+                                    "torch_on" -> {
+                                        toggleTorch(true)
+                                    }
+                                    "torch_off" -> {
+                                        toggleTorch(false)
+                                    }
+                                    "torch_blink_on" -> {
+                                        toggleTorchBlinking(true)
+                                    }
+                                    "torch_blink_off" -> {
+                                        toggleTorchBlinking(false)
+                                    }
+                                    "bluetooth_on" -> {
+                                        toggleBluetooth(true)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Bluetooth ON")
+                                    }
+                                    "bluetooth_off" -> {
+                                        toggleBluetooth(false)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Bluetooth OFF")
+                                    }
+                                    "wifi_on" -> {
+                                        toggleWifi(true)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Wi-Fi ON")
+                                    }
+                                    "wifi_off" -> {
+                                        toggleWifi(false)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Wi-Fi OFF")
+                                    }
+                                    "go_home" -> {
+                                        triggerGoHome()
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: triggered Go Home")
+                                    }
+                                    "go_back" -> {
+                                        triggerGoBack()
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: triggered Go Back")
                                     }
                                 }
                                 updatedCommands[cmdId] = cmd.copy(executed = true)

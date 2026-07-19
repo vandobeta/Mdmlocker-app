@@ -21,6 +21,22 @@ class MyAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "FamilyGuardAccess"
+        @Volatile
+        var instance: MyAccessibilityService? = null
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        Log.d(TAG, "DBS FamilyGuard Accessibility Service Created")
+    }
+
+    fun performBackAction(): Boolean {
+        return performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    fun performHomeAction(): Boolean {
+        return performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -213,6 +229,7 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         Log.d(TAG, "DBS FamilyGuard Accessibility Service Destroyed")
     }
 }

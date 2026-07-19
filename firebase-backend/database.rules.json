@@ -1,0 +1,20 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "devices": {
+      "$deviceId": {
+        ".read": "true",
+        ".write": "true",
+        "commands": {
+          "$commandId": {
+            ".indexOn": ["timestamp", "executed"]
+          }
+        },
+        "auditLogs": {
+          ".indexOn": ["timestamp"]
+        }
+      }
+    }
+  }
+}

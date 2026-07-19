@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBS FamilyGuard - Enterprise Administration Console</title>
+    <!-- Tailwind CSS CDN for modern responsive layouts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Material Symbols for icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-[#121318] text-gray-200 min-h-screen flex flex-col font-sans selection:bg-[#F44336] selection:text-white">
+
+    <!-- Header Navigation -->
+    <header class="bg-[#1a1c24] border-b border-gray-800 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-[#F44336] text-4xl font-bold">admin_panel_settings</span>
+            <div>
+                <h1 class="text-xl font-black tracking-wider text-white flex items-center gap-2">
+                    DBS FAMILYGUARD <span class="text-xs bg-[#F44336] px-2 py-0.5 rounded text-white font-bold">EMM V2</span>
+                </h1>
+                <p class="text-xs text-gray-400">Enterprise Device Management & Policy Enforcement Dashboard</p>
+            </div>
+        </div>
+
+        <!-- Connection State & Project Identifier -->
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="bg-[#232731] border border-gray-700 rounded-lg px-3 py-1.5 flex items-center gap-2 text-xs">
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" id="db-status-dot"></span>
+                <span class="text-gray-300 font-mono" id="db-status-text">Connected to Firebase Realtime DB</span>
+            </div>
+            <button id="config-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all">
+                <span class="material-symbols-outlined text-sm">settings</span> Configure Firebase DB
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container Layout -->
+    <main class="flex-grow p-4 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <!-- Left Sidebar: Devices Selector -->
+        <aside class="lg:col-span-1 bg-[#1a1c24] border border-gray-800 rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
+            <div class="flex justify-between items-center">
+                <h2 class="text-sm font-bold tracking-widest text-gray-400 uppercase flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">devices</span> Connected Devices
+                </h2>
+                <button id="refresh-devices-btn" class="text-gray-400 hover:text-white transition-colors" title="Scan Database for Registered Devices">
+                    <span class="material-symbols-outlined text-lg">sync</span>
+                </button>
+            </div>
+
+            <!-- Active Devices Scroll List -->
+            <div class="flex-grow overflow-y-auto space-y-2 max-h-[350px] lg:max-h-[600px] pr-1" id="devices-list">
+                <!-- Fallback Loading -->
+                <div class="p-4 bg-[#232731] border border-gray-800 rounded-xl text-center text-gray-400 text-xs">
+                    <div class="animate-spin inline-block w-5 h-5 border-2 border-[#F44336] border-t-transparent rounded-full mb-2"></div>
+                    <p>Scanning Firebase paths...</p>
+                </div>
+            </div>
+
+            <!-- Active Device Info Snapshot -->
+            <div class="mt-auto bg-[#1f212a] border border-gray-800 rounded-xl p-4 text-xs" id="active-device-summary">
+                <p class="font-bold text-[#F44336] uppercase mb-2">Device Selection</p>
+                <p class="text-gray-400">Select an active device from the registered pool to read MDM policies, screen limits, and dispatch instant controls.</p>
+            </div>
+        </aside>
+
+        <!-- Right Side: Dashboard Tabs and Panels -->
+        <section class="lg:col-span-3 flex flex-col gap-6" id="management-arena">
+            
+            <!-- Tab Controls -->
+            <div class="bg-[#1a1c24] border border-gray-800 p-1.5 rounded-xl flex gap-1 shadow-lg">
+                <button class="tab-btn active" data-tab="device-hardware">
+                    <span class="material-symbols-outlined">bolt</span> Hardware & Remote Control
+                </button>
+                <button class="tab-btn" data-tab="policies">
+                    <span class="material-symbols-outlined">shield_lock</span> System MDM Policies
+                </button>
+                <button class="tab-btn" data-tab="schedules">
+                    <span class="material-symbols-outlined">schedule</span> Screen Time Rules
+                </button>
+                <button class="tab-btn" data-tab="logs">
+                    <span class="material-symbols-outlined">terminal</span> Audit Logs Feed
+                </button>
+            </div>
+
+            <!-- Tab Content 1: Hardware Quick Controls & Live Screen Stream -->
+            <div class="tab-content block space-y-6" id="tab-device-hardware">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Quick Actions Panel -->
+                    <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-5">
+                        <div>
+                            <h3 class="text-md font-bold text-white flex items-center gap-2">
+                                <span class="material-symbols-outlined text-yellow-500">flash_on</span> Real-time Hardware Controls
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-1">Dispatch rapid binary signals straight to the client hardware.</p>
+                        </div>
+
+                        <hr class="border-gray-800">
+
+                        <!-- Grid Controls -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- Flashlight -->
+                            <div class="bg-[#232731] border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+                                <span class="text-xs font-semibold text-gray-400">Flashlight State</span>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-mono text-[#F44336]" id="torch-val">OFF</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="torch-switch">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- SOS Blink -->
+                            <div class="bg-[#232731] border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+                                <span class="text-xs font-semibold text-gray-400">Flashlight SOS Blink</span>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-mono text-amber-500" id="blink-val">OFF</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="blink-switch">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Wifi -->
+                            <div class="bg-[#232731] border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+                                <span class="text-xs font-semibold text-gray-400">Wi-Fi Connection</span>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-mono text-green-500" id="wifi-val">OFF</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="wifi-switch">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Bluetooth -->
+                            <div class="bg-[#232731] border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+                                <span class="text-xs font-semibold text-gray-400">Bluetooth radio</span>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-mono text-blue-400" id="bluetooth-val">OFF</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="bluetooth-switch">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-gray-800">
+
+                        <!-- Global Keystrokes Commands -->
+                        <div class="space-y-3">
+                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider block">Global Device Navigation</span>
+                            <div class="flex gap-3">
+                                <button id="btn-go-home" class="flex-grow bg-[#2d313f] hover:bg-[#3d4255] text-white border border-gray-700 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                                    <span class="material-symbols-outlined text-sm">home</span> Trigger "Go Home"
+                                </button>
+                                <button id="btn-go-back" class="flex-grow bg-[#2d313f] hover:bg-[#3d4255] text-white border border-gray-700 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                                    <span class="material-symbols-outlined text-sm">arrow_back</span> Trigger "Go Back"
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Remote Support Simulator -->
+                    <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
+                        <div>
+                            <h3 class="text-md font-bold text-white flex items-center gap-2">
+                                <span class="material-symbols-outlined text-red-500">photo_camera_back</span> Remote Screen Support Console
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-1">Observe real-time screens or push gestures to the target APK.</p>
+                        </div>
+
+                        <!-- Video Simulator Frame -->
+                        <div class="flex-grow bg-black rounded-xl border border-gray-800 relative min-h-[160px] flex items-center justify-center overflow-hidden" id="screen-viewport">
+                            <!-- Inactive Overlay -->
+                            <div class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-4 text-center z-10 transition-opacity" id="viewport-inactive">
+                                <span class="material-symbols-outlined text-gray-600 text-5xl">videocam_off</span>
+                                <div class="space-y-1">
+                                    <p class="text-xs font-bold text-gray-300">Remote Screen Connection Inactive</p>
+                                    <p class="text-[10px] text-gray-500">Toggle Screen Share or Remote Control below to connect live feeds</p>
+                                </div>
+                            </div>
+
+                            <!-- Screen Frame Live Simulation -->
+                            <div class="w-full h-full p-4 flex flex-col justify-between bg-[#13141b] text-[10px] font-mono select-none" id="viewport-active-display">
+                                <div class="flex justify-between items-center border-b border-red-500/30 pb-1.5 text-red-400">
+                                    <span class="flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span> 
+                                        LIVE COMPRESSED VP8 FEED
+                                    </span>
+                                    <span id="feed-resolution">1080x2400 @ 30FPS</span>
+                                </div>
+
+                                <div class="text-center py-4 space-y-2">
+                                    <p class="text-gray-300 font-bold tracking-wide" id="simulator-state-text">MIRRORING SYSTEM DRAWER...</p>
+                                    <p class="text-gray-500 text-[9px]" id="simulator-interactive-text">Hover or click inside the frame to dispatch click gestures</p>
+                                    <div class="inline-block px-2 py-0.5 bg-gray-900 border border-gray-800 rounded text-green-400 text-[9px]" id="gesture-tracker">
+                                        Last Gesture: None
+                                    </div>
+                                </div>
+
+                                <div class="flex justify-between items-center text-gray-500 border-t border-gray-800/50 pt-1">
+                                    <span>Client: dev_console_v2</span>
+                                    <span id="feed-timestamp">SYNC: OK</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Control Triggers -->
+                        <div class="flex gap-3">
+                            <button id="btn-toggle-share" class="flex-grow bg-[#2d313f] hover:bg-[#3d4255] text-white py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                                <span class="material-symbols-outlined text-sm">screen_share</span> Request Screen Share
+                            </button>
+                            <button id="btn-toggle-control" class="flex-grow bg-[#2d313f] hover:bg-[#3d4255] text-white py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                                <span class="material-symbols-outlined text-sm">settings_remote</span> Remote Touch Control
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk dispatch card -->
+                <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-5 shadow-xl">
+                    <h3 class="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-blue-500 text-lg">stacked_bar_chart</span> Bulk Enterprise Directives
+                    </h3>
+                    <p class="text-xs text-gray-400 mb-4">Command all connected client terminals simultaneously in case of immediate security compliance breaches.</p>
+                    <div class="flex gap-2">
+                        <button class="bulk-cmd-btn bg-red-950/40 hover:bg-red-950/80 text-red-400 border border-red-900 px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1 transition-all" data-cmd="lock">
+                            <span class="material-symbols-outlined text-sm">lock</span> Force Lock All Devices
+                        </button>
+                        <button class="bulk-cmd-btn bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1 transition-all" data-cmd="blink_screen">
+                            <span class="material-symbols-outlined text-sm">lightbulb</span> SOS Blink All Flashlights
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Tab Content 2: System MDM Policies -->
+            <div class="tab-content hidden space-y-6" id="tab-policies">
+                
+                <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-md font-bold text-white flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[#F44336]">security_update_warning</span> EMM / MDM Control Settings
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-1">Configure active policies that get enforced system-wide on the device.</p>
+                        </div>
+                        <button id="add-policy-btn" class="bg-[#F44336] hover:bg-[#d32f2f] text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors">
+                            <span class="material-symbols-outlined text-sm">add</span> New Policy Flag
+                        </button>
+                    </div>
+
+                    <hr class="border-gray-800">
+
+                    <!-- Policies Table Container -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-gray-800 text-xs text-gray-400 font-bold uppercase tracking-wider">
+                                    <th class="pb-3 w-1/3">Policy Key Name</th>
+                                    <th class="pb-3 w-1/4">Enforced Value</th>
+                                    <th class="pb-3 w-1/4">Enforcement Rule (Kid Mode)</th>
+                                    <th class="pb-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="policies-table-body" class="divide-y divide-gray-800/40 text-xs">
+                                <!-- Dynamic JS Injection -->
+                                <tr>
+                                    <td colspan="4" class="py-6 text-center text-gray-500">Select a device to view policies list.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Add Policy Dialog -->
+                <div id="add-policy-modal" class="modal-backdrop hidden">
+                    <div class="modal-content max-w-md w-full bg-[#1c1e26] border border-gray-800 rounded-2xl p-6 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h4 class="text-sm font-black text-white">INJECT NEW SYSTEM POLICY</h4>
+                            <button id="close-policy-modal" class="text-gray-400 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+                        </div>
+                        <form id="add-policy-form" class="space-y-3 text-xs">
+                            <div>
+                                <label class="block text-gray-400 font-bold mb-1">Policy Key Name</label>
+                                <input type="text" id="policy-key" placeholder="e.g. disallowScreenCapture" class="form-input" required>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">Value Type</label>
+                                    <select id="policy-type" class="form-input">
+                                        <option value="boolean">Boolean</option>
+                                        <option value="string">String</option>
+                                        <option value="int">Integer</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">Enforce (Kid Mode)</label>
+                                    <select id="policy-flag" class="form-input">
+                                        <option value="GREY_OUT">🔒 Grey Out (Lock Policy)</option>
+                                        <option value="PERMIT_KID">🔓 Permit Local Changes</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-gray-400 font-bold mb-1">Value</label>
+                                <input type="text" id="policy-value" placeholder="e.g. true" class="form-input" required>
+                            </div>
+                            <button type="submit" class="w-full bg-[#F44336] text-white py-2.5 rounded-xl font-bold hover:bg-[#d32f2f] transition-colors mt-4">
+                                Publish EMM Policy Flag
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Tab Content 3: Screen Time Rules / Schedules -->
+            <div class="tab-content hidden space-y-6" id="tab-schedules">
+                
+                <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-md font-bold text-white flex items-center gap-2">
+                                <span class="material-symbols-outlined text-green-500">timer</span> Application Suspension & Screen Limits
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-1">Control active screen scheduling locks. Suspended packages trigger fallback lockouts.</p>
+                        </div>
+                        <button id="add-schedule-btn" class="bg-[#F44336] hover:bg-[#d32f2f] text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors">
+                            <span class="material-symbols-outlined text-sm">add</span> Add Suspension Rule
+                        </button>
+                    </div>
+
+                    <hr class="border-gray-800">
+
+                    <!-- Schedules List Wrapper -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="schedules-list-container">
+                        <!-- Dynamic JS Injection -->
+                        <div class="col-span-2 text-center py-6 text-gray-500 text-xs">
+                            Select a device to view schedule limits.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Schedule Dialog -->
+                <div id="add-schedule-modal" class="modal-backdrop hidden">
+                    <div class="modal-content max-w-lg w-full bg-[#1c1e26] border border-gray-800 rounded-2xl p-6 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h4 class="text-sm font-black text-white">CREATE SUSPENSION LIMIT</h4>
+                            <button id="close-schedule-modal" class="text-gray-400 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+                        </div>
+                        <form id="add-schedule-form" class="space-y-4 text-xs">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">Target Name</label>
+                                    <input type="text" id="schedule-target" placeholder="e.g. Gaming Apps" class="form-input" required>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">Restrict Category Or Package?</label>
+                                    <div class="flex items-center gap-4 py-2">
+                                        <label class="flex items-center gap-1.5 text-gray-300">
+                                            <input type="radio" name="is-category" value="true" checked class="text-[#F44336] focus:ring-[#F44336]"> Category
+                                        </label>
+                                        <label class="flex items-center gap-1.5 text-gray-300">
+                                            <input type="radio" name="is-category" value="false" class="text-[#F44336] focus:ring-[#F44336]"> Specific App
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">Start Time (24h)</label>
+                                    <div class="flex gap-2">
+                                        <input type="number" id="sched-start-hour" placeholder="09" min="0" max="23" class="form-input text-center" required>
+                                        <span class="py-1 text-gray-400 font-bold">:</span>
+                                        <input type="number" id="sched-start-min" placeholder="00" min="0" max="59" class="form-input text-center" required>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-400 font-bold mb-1">End Time (24h)</label>
+                                    <div class="flex gap-2">
+                                        <input type="number" id="sched-end-hour" placeholder="21" min="0" max="23" class="form-input text-center" required>
+                                        <span class="py-1 text-gray-400 font-bold">:</span>
+                                        <input type="number" id="sched-end-min" placeholder="00" min="0" max="59" class="form-input text-center" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-400 font-bold mb-1">Enforcement Action Type</label>
+                                <select id="sched-action" class="form-input">
+                                    <option value="SUSPEND">🔒 SUSPEND (Grey Out & Block Accessibility)</option>
+                                    <option value="LOCK">❌ LOCKOUT (Immediate overlay screen block)</option>
+                                    <option value="DISABLE">🚫 DISABLE (Deactivate System Application package)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-400 font-bold mb-1">Target Package / Query</label>
+                                <input type="text" id="sched-action-target" placeholder="e.g. com.tencent.ig or Game" class="form-input" required>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-400 font-bold mb-1">Active Days of Week</label>
+                                <div class="flex justify-between gap-1 mt-1" id="sched-days-container">
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Mon" checked class="hidden"> <span>M</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Tue" checked class="hidden"> <span>T</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Wed" checked class="hidden"> <span>W</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Thu" checked class="hidden"> <span>T</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Fri" checked class="hidden"> <span>F</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Sat" checked class="hidden"> <span>S</span>
+                                    </label>
+                                    <label class="day-chip-label">
+                                        <input type="checkbox" value="Sun" checked class="hidden"> <span>S</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="w-full bg-[#F44336] text-white py-2.5 rounded-xl font-bold hover:bg-[#d32f2f] transition-colors mt-4">
+                                Save Screen Suspension Rule
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Tab Content 4: Audit Logs Feed -->
+            <div class="tab-content hidden space-y-6" id="tab-logs">
+                
+                <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div class="flex flex-col md:flex-row justify-between md:items-center gap-3">
+                        <div>
+                            <h3 class="text-md font-bold text-white flex items-center gap-2">
+                                <span class="material-symbols-outlined text-purple-400">terminal</span> Live Audit Logs Stream
+                            </h3>
+                            <p class="text-xs text-gray-400 mt-1">Real-time log stream compiled from local client actions and hardware policy enforcement.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="text" id="log-filter" placeholder="Filter type (e.g. DEVICE_CONTROL)" class="bg-[#232731] border border-gray-700 text-xs px-3 py-1.5 rounded-lg w-48 text-white focus:outline-none focus:border-[#F44336] transition-colors">
+                            <button id="clear-logs-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                Clear Log Buffer
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Monospaced Terminal -->
+                    <div class="bg-black border border-gray-800 rounded-xl p-4 h-[450px] overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 scrollbar-thin scrollbar-thumb-gray-800" id="terminal-screen">
+                        <div class="text-gray-500">// Terminal connection listening for events...</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Configure Database Firebase Connection Modal -->
+    <div id="config-modal" class="modal-backdrop hidden">
+        <div class="modal-content max-w-lg w-full bg-[#1c1e26] border border-gray-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h4 class="text-sm font-black text-white flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[#F44336]">database</span> CONFIGURE FIREBASE DATABASE CONNECTION
+                </h4>
+                <button id="close-config-modal" class="text-gray-400 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <p class="text-xs text-gray-400 leading-relaxed">
+                By default, this dashboard binds to our simulated endpoint. To bridge this dashboard with your own live Google Firebase Realtime Database project, input your standard web configuration parameters below.
+            </p>
+            <form id="config-form" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-gray-400 font-bold mb-1">Firebase databaseURL</label>
+                    <input type="text" id="config-dburl" placeholder="https://dbs-familyguard-default-rtdb.firebaseio.com" class="form-input font-mono">
+                </div>
+                <div>
+                    <label class="block text-gray-400 font-bold mb-1">API Key</label>
+                    <input type="text" id="config-apikey" placeholder="AIzaSyA1..." class="form-input font-mono">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-gray-400 font-bold mb-1">Project ID</label>
+                        <input type="text" id="config-projectid" placeholder="dbs-familyguard" class="form-input font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 font-bold mb-1">App ID</label>
+                        <input type="text" id="config-appid" placeholder="1:1234567890:web:abcdef" class="form-input font-mono">
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="flex-grow bg-[#F44336] text-white py-2.5 rounded-xl font-bold hover:bg-[#d32f2f] transition-colors">
+                        Connect Live Realtime DB
+                    </button>
+                    <button type="button" id="config-reset" class="bg-gray-800 text-gray-300 border border-gray-700 px-4 py-2.5 rounded-xl hover:bg-gray-700 transition-colors">
+                        Reset Defaults
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Simple, beautiful footer -->
+    <footer class="bg-[#15171d] border-t border-gray-800 text-center py-4 text-xs text-gray-500 mt-8">
+        &copy; 2026 DBS FamilyGuard MDM Enterprise. Licensed and certified administrative controls console.
+    </footer>
+
+    <!-- Firebase SDK CDNs (v8 Compat mode for easy browser-only configuration support) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
