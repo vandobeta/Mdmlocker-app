@@ -64,6 +64,16 @@
                 <p class="font-bold text-[#F44336] uppercase mb-2">Device Selection</p>
                 <p class="text-gray-400">Select an active device from the registered pool to read MDM policies, screen limits, and dispatch instant controls.</p>
             </div>
+
+            <!-- Live Device Location Card -->
+            <div class="bg-[#1f212a] border border-gray-800 rounded-xl p-4 text-xs" id="device-location-card">
+                <p class="font-bold text-gray-400 uppercase mb-2 tracking-wider text-[10px] flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-xs text-red-400">location_on</span> Live GPS Location
+                </p>
+                <div class="space-y-2 font-mono text-[10px]" id="location-card-content">
+                    <p class="text-gray-500 italic">No device selected.</p>
+                </div>
+            </div>
         </aside>
 
         <!-- Right Side: Dashboard Tabs and Panels -->
@@ -163,6 +173,61 @@
                                 <button id="btn-go-back" class="flex-grow bg-[#2d313f] hover:bg-[#3d4255] text-white border border-gray-700 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
                                     <span class="material-symbols-outlined text-sm">arrow_back</span> Trigger "Go Back"
                                 </button>
+                            </div>
+                        </div>
+
+                        <hr class="border-gray-800">
+
+                        <!-- Quick Macro Controller -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Quick Macros</span>
+                                <button id="btn-toggle-macro-form" class="text-xs text-red-400 hover:text-red-300 font-semibold flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px]">add_circle</span> Create Macro
+                                </button>
+                            </div>
+
+                            <!-- Macro Creator Form (Hidden by default) -->
+                            <div id="macro-form" class="hidden bg-[#232731] border border-gray-800 rounded-xl p-4 space-y-3 transition-all duration-200">
+                                <p class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">New Sequence Builder</p>
+                                <input type="text" id="macro-name" placeholder="Macro Name (e.g. Lockdown & Cut Wifi)" class="w-full bg-[#13141b] border border-gray-800 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-red-500">
+                                
+                                <div class="space-y-2 text-[11px] text-gray-300">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="lock" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Lock Device Screen</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="unlock" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Unlock Device Screen</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="wifi_off" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Disable Wi-Fi Connection</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="wifi_on" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Enable Wi-Fi Connection</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="torch_on" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Turn On Flashlight</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" value="torch_off" class="macro-step-check rounded bg-[#13141b] border-gray-800 text-red-500 focus:ring-0">
+                                        <span>Turn Off Flashlight</span>
+                                    </label>
+                                </div>
+
+                                <div class="flex gap-2 justify-end pt-1">
+                                    <button id="btn-cancel-macro" class="bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Cancel</button>
+                                    <button id="btn-save-macro" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all">Save Macro</button>
+                                </div>
+                            </div>
+
+                            <!-- List of saved macros -->
+                            <div class="grid grid-cols-1 gap-2" id="macros-list">
+                                <!-- Macros will be injected dynamically -->
                             </div>
                         </div>
                     </div>

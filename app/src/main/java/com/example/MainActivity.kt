@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.example.service.ForegroundTaskMonitorService
+import com.example.service.MyAccessibilityService
 import com.example.ui.DashboardScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.MainViewModel
@@ -64,12 +65,15 @@ class MainActivity : ComponentActivity() {
       // Dynamically lock/unlock application task screen into Kiosk Mode based on Lock Screen status
       lifecycleScope.launch {
         viewModel.isLockScreenActive.collectLatest { isLocked ->
+          // Sync lock state directly to accessibility handler
+          MyAccessibilityService.isLockScreenActive = isLocked
+
           if (isLocked) {
             try {
-              Log.i("MainActivity", "Device Locked: Initiating Lock Task Mode.")
+              Log.i("MainActivity", "Device Locked: Initiating Lock Task Mode (Kiosk Mode).")
               startLockTask()
             } catch (e: Exception) {
-              Log.e("MainActivity", "Failed to start Lock Task. (Device Owner required for silent locking)", e)
+              Log.w("MainActivity", "startLockTask failed (device is not provisioned as Device Owner). Falling back to secure overlay and accessibility blockers: ${e.message}")
             }
           } else {
             try {

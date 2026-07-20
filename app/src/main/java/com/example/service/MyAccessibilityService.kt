@@ -23,6 +23,26 @@ class MyAccessibilityService : AccessibilityService() {
         private const val TAG = "FamilyGuardAccess"
         @Volatile
         var instance: MyAccessibilityService? = null
+        @Volatile
+        var isLockScreenActive: Boolean = false
+    }
+
+    override fun onKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (isLockScreenActive) {
+            val keyCode = event.keyCode
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK || 
+                keyCode == android.view.KeyEvent.KEYCODE_HOME || 
+                keyCode == android.view.KeyEvent.KEYCODE_APP_SWITCH) {
+                
+                Log.i(TAG, "Intercepted and absorbed navigation key $keyCode because Device is Locked.")
+                
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    launchLockScreen()
+                }
+                return true // Consume key event entirely!
+            }
+        }
+        return super.onKeyEvent(event)
     }
 
     override fun onCreate() {
@@ -55,6 +75,12 @@ class MyAccessibilityService : AccessibilityService() {
 
             // Prevent launching other apps if not provisioned OR if parent lock is active!
             if (!isProvisioned || isParentLocked) {
+                if (packageName == "com.android.systemui") {
+                    // Force-collapse the notification shade / Quick Settings drawer
+                    @Suppress("DEPRECATION")
+                    sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+                }
+
                 // If device is in lockdown, only allow our own app, system UI, and dialer/phone apps
                 val allowedPackages = listOf(
                     this@MyAccessibilityService.packageName,
