@@ -1,0 +1,83 @@
+name: Build Android Release APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 36
+          build-tools: 36.0.0
+
+      - name: Grant execute permission to gradlew
+        run: chmod +x Mdmlocker-app/gradlew || chmod +x gradlew || true
+
+      - name: Build release APK
+        run: |
+          if [ -f Mdmlocker-app/gradlew ]; then
+            cd Mdmlocker-app && ./gradlew assembleRelease --no-daemon --stacktrace
+          elif [ -f gradlew ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            echo "No gradlew found"
+            exit 1
+          fi
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: familyguard-release-apk
+          path: Mdmlocker-app/app/build/outputs/apk/release/*.apk
+          retention-days: 90
+
+      - name: Create GitHub Release (on push to main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Mdmlocker-app/app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## DBS FamilyGuard EMM V2.0 - Hardened Release
+
+            ### What's New
+            - Real TLS certificate pinning for Firebase (GTS Root R1/R4)
+            - Non-derivable offline bypass PIN (random per-device secret)
+            - Expanded MDM policy set with GREY_OUT / PERMIT_KID semantics
+            - Global / Secure / System settings tables editor (dashboard → device)
+            - Remote commands: torch, Wi-Fi, Bluetooth, Airplane Mode, NFC, Go Home/Back
+            - Screen share / remote control support
+            - Accessibility blocks for settings, developer options, uninstaller
+            - Anti-tamper enforcement loop (1-second sweep)
+            - Background-only operation (no launcher icon)
+
+            ### First Launch
+            1. Install APK on target device
+            2. Grant Device Admin
+            3. Grant Accessibility Service
+            4. Device shows "Device Locked" screen and registers with backend
+
+            ### Web Dashboard
+            Deployed automatically to GitHub Pages and Firebase Hosting.
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
