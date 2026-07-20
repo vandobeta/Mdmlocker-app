@@ -5,13 +5,13 @@
 
 // --- Firebase Configuration & Initialization ---
 const DEFAULT_CONFIG = {
-    databaseURL: "https://dbfamilyguard-default-rtdb.firebaseio.com",
-    apiKey: "AIzaSyD9U6sW0IZ5fi50Zyd9om7IqetFyTZ5Ln0",
-    authDomain: "dbfamilyguard.firebaseapp.com",
-    projectId: "dbfamilyguard",
-    storageBucket: "dbfamilyguard.firebasestorage.app",
-    messagingSenderId: "833618312649",
-    appId: "1:833618312649:web:dbfamilyguard"
+  apiKey: "AIzaSyDPRkFj1trkSOHLClmCuhmrcj1Yoyvch4Q",
+  authDomain: "dbfamilyguard.firebaseapp.com",
+  projectId: "dbfamilyguard",
+  storageBucket: "dbfamilyguard.firebasestorage.app",
+  messagingSenderId: "833618312649",
+  appId: "1:833618312649:web:24f6a58cda43f3680f3c18",
+  databaseURL: "https://dbfamilyguard-default-rtdb.firebaseio.com"
 };
 
 let currentConfig = { ...DEFAULT_CONFIG };
@@ -91,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupTroubleshootingActions();
     setupAntiTamperActions();
     setupAuth();
+    setupEnrollmentActions();
     
     // Periodic status polling simulator
     setInterval(updateSimulatedScreenFrames, 1500);
@@ -125,7 +126,8 @@ function setupTabControls() {
             const targetEl = document.getElementById(`tab-${targetTab}`);
             if (targetEl) {
                 targetEl.classList.remove("hidden");
-                targetEl.classList.add("block");
+                targetEl.classList.add("block", "fade-in");
+                setTimeout(() => targetEl.classList.remove("fade-in"), 300);
             }
         });
     });
@@ -1833,15 +1835,26 @@ function setupAuth() {
         if (isLoginMode) {
             firebase.auth().signInWithEmailAndPassword(email, password)
                 .then((userCredential) => {
-                    authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-green-950/40 text-green-400 border-green-900/30 block";
-                    authMessage.innerText = "Authentication successful! Redirecting to secure node...";
-                    authForm.reset();
+                    if (userCredential.user.email !== "vandosavage256@gmail.com") {
+                        firebase.auth().signOut();
+                        authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-red-950/40 text-red-400 border-red-900/30 block";
+                        authMessage.innerText = "Access Denied: You are not authorized to manage this dashboard.";
+                    } else {
+                        authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-green-950/40 text-green-400 border-green-900/30 block";
+                        authMessage.innerText = "Authentication successful! Redirecting to secure node...";
+                        authForm.reset();
+                    }
                 })
                 .catch((error) => {
                     authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-red-950/40 text-red-400 border-red-900/30 block";
                     authMessage.innerText = `Access Denied: ${error.message}`;
                 });
         } else {
+            if (email !== "vandosavage256@gmail.com") {
+                authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-red-950/40 text-red-400 border-red-900/30 block";
+                authMessage.innerText = "Registration Failed: This email is not authorized for administrative access.";
+                return;
+            }
             firebase.auth().createUserWithEmailAndPassword(email, password)
                 .then((userCredential) => {
                     authMessage.className = "p-3.5 rounded-xl border text-[11px] font-medium leading-relaxed bg-green-950/40 text-green-400 border-green-900/30 block";
@@ -1920,5 +1933,40 @@ function syncPoliciesToFirestore() {
     })
     .catch((err) => {
         console.error("Failed to synchronize to Firestore:", err);
+    });
+}
+
+function setupEnrollmentActions() {
+    const generateTokenBtn = document.getElementById("generate-token-btn");
+    const enrollmentQrCode = document.getElementById("enrollment-qr-code");
+    const enrollmentTokenDisplay = document.getElementById("enrollment-token-display");
+
+    if (!generateTokenBtn) return;
+
+    // Initialize QR Code generator
+    const qrcode = new QRCode(enrollmentQrCode, {
+        width: 256,
+        height: 256,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
+
+    generateTokenBtn.addEventListener("click", () => {
+        const token = "DBS-GUARD-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+        enrollmentTokenDisplay.innerText = "Token: " + token;
+
+        // APK URL - assuming the same host for now, or use a placeholder
+        const apkUrl = window.location.origin + "/downloads/app-release.apk";
+        
+        // Payload for OOBE
+        const payload = JSON.stringify({
+            token: token,
+            config: currentConfig,
+            apkUrl: apkUrl
+        });
+
+        qrcode.clear();
+        qrcode.makeCode(payload);
     });
 }

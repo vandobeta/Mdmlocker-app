@@ -160,6 +160,14 @@
             outline: none;
             border-color: #F44336;
         }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
         
         .torch-mode-btn.active {
             background-color: rgba(234, 179, 8, 0.2) !important;
@@ -319,6 +327,9 @@
                 </button>
                 <button class="tab-btn" data-tab="logs">
                     <span class="material-symbols-outlined text-sm">terminal</span> Audit Logs
+                </button>
+                <button class="tab-btn" data-tab="enrollment">
+                    <span class="material-symbols-outlined text-sm">qr_code</span> Enrollment
                 </button>
             </div>
 
@@ -1248,6 +1259,26 @@ cipher AES-256-GCM</textarea>
                 </div>
             </div>
 
+            <!-- Tab Content 8: Enrollment -->
+            <div class="tab-content hidden space-y-6" id="tab-enrollment">
+                <div class="bg-[#1a1c24] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div>
+                        <h3 class="text-md font-bold text-white flex items-center gap-2">
+                            <span class="material-symbols-outlined text-green-400">qr_code</span> Device Enrollment
+                        </h3>
+                        <p class="text-xs text-gray-400 mt-1">Generate enrollment tokens and QR codes for automated device provisioning.</p>
+                    </div>
+                    
+                    <div class="flex flex-col items-center justify-center p-8 border border-dashed border-gray-700 rounded-xl space-y-4">
+                        <div id="enrollment-qr-code" class="bg-white p-2"></div>
+                        <button id="generate-token-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all">
+                            Generate New Token
+                        </button>
+                        <p id="enrollment-token-display" class="text-xs font-mono text-gray-400"></p>
+                    </div>
+                </div>
+            </div>
+
         </section>
 
     </main>
@@ -1303,6 +1334,7 @@ cipher AES-256-GCM</textarea>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
