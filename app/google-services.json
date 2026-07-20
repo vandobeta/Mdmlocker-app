@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "833618312649",
+    "project_id": "dbfamilyguard",
+    "storage_bucket": "dbfamilyguard.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:833618312649:android:0ec250a753e8b3260f3c18",
+        "android_client_info": {
+          "package_name": "com.aistudio.familyguard.ndrwf"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9U6sW0IZ5fi50Zyd9om7IqetFyTZ5Ln0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -30,6 +30,7 @@ class ScheduleEnforcerService : Service() {
     private var enforcementJob: Job? = null
     private var sessionCallback: PackageInstaller.SessionCallback? = null
     private var lastSuspendedPackages: Set<String> = emptySet()
+    private var expectedTimeDiff: Long = 0L
 
     companion object {
         private const val CHANNEL_ID = "familyguard_enforcement_channel"
@@ -97,6 +98,9 @@ class ScheduleEnforcerService : Service() {
                         false
                     }
                     val isAdminActive = dpm.isAdminActive(adminComponent)
+                    
+                    val sharedPrefs = getSharedPreferences("familyguard_prefs", Context.MODE_PRIVATE)
+                    val isProvisioned = sharedPrefs.getBoolean("is_provisioned", false)
 
                     // Whitelist ourselves as lock task package if Device Owner
                     if (isDeviceOwner && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -253,9 +257,7 @@ class ScheduleEnforcerService : Service() {
                     // Enforce lock-mode and EMM screen capture policies (screenshot & screen recording block system-wide)
                     if (isAdminActive) {
                         try {
-                            val sharedPrefs = getSharedPreferences("familyguard_prefs", Context.MODE_PRIVATE)
-                            val isProvisioned = sharedPrefs.getBoolean("is_provisioned", false)
-                            val isParentLocked = policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
+                            val isParentLocked = isProvisioned && policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
                             val isLockActive = !isProvisioned || isParentLocked
 
                             val explicitScreenCapturePolicy = policies.firstOrNull { it.key == "disallowScreenCapture" }
@@ -276,6 +278,11 @@ class ScheduleEnforcerService : Service() {
                         updateNotification("Restricted access active: ${uniqueBlockedNames.size} app policies suspended")
                     } else {
                         updateNotification("All standard applications allowed. Corporate policies active.")
+                    }
+
+                    // 5. Constantly running anti time setting logic to identify time manipulation
+                    if (isProvisioned) {
+                        performTimeTamperVerification(database, dpm, adminComponent, isDeviceOwner)
                     }
 
                 } catch (e: Exception) {
@@ -593,5 +600,94 @@ class ScheduleEnforcerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
+    }
+
+    private fun performTimeTamperVerification(database: AppDatabase, dpm: DevicePolicyManager, adminComponent: ComponentName, isDeviceOwner: Boolean) {
+        val contentResolver = contentResolver
+        
+        // 1. Force Auto-Time On if we are Device Owner
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && isDeviceOwner) {
+            try {
+                if (!dpm.getAutoTimeRequired()) {
+                    Log.i(TAG, "[ANTI-TAMPER] Forcing auto-time-required policy ON.")
+                    dpm.setAutoTimeRequired(adminComponent, true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to enforce auto time required policy", e)
+            }
+        }
+
+        // 2. Double check if automatic time settings are turned off
+        var autoTimeDisabled = false
+        try {
+            val isAutoTimeOn = Settings.Global.getInt(contentResolver, Settings.Global.AUTO_TIME, 1) != 0
+            val isAutoTimeZoneOn = Settings.Global.getInt(contentResolver, Settings.Global.AUTO_TIME_ZONE, 1) != 0
+            if (!isAutoTimeOn || !isAutoTimeZoneOn) {
+                autoTimeDisabled = true
+                Log.w(TAG, "[ANTI-TAMPER] Time manipulation warning: Manual time settings detected!")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query auto-time status", e)
+        }
+
+        // 3. Mathematical check of uptime vs. wall clock time drift
+        val currentWallTime = System.currentTimeMillis()
+        val currentUptime = android.os.SystemClock.elapsedRealtime()
+        val currentDiff = currentWallTime - currentUptime
+
+        var driftDetected = false
+        if (expectedTimeDiff == 0L) {
+            expectedTimeDiff = currentDiff
+        } else {
+            val discrepancy = java.lang.Math.abs(currentDiff - expectedTimeDiff)
+            if (discrepancy > 15000) { // More than 15 seconds shift!
+                driftDetected = true
+                Log.w(TAG, "[ANTI-TAMPER] Clock jump detected! Discrepancy: $discrepancy ms.")
+            }
+            // Keep tracking the current difference as expected to baseline from the new offset
+            expectedTimeDiff = currentDiff
+        }
+
+        // If any form of tampering is identified, trigger immediate lockdown!
+        if (autoTimeDisabled || driftDetected) {
+            triggerTimeTamperingLockdown(database)
+        }
+    }
+
+    private fun triggerTimeTamperingLockdown(database: AppDatabase) {
+        serviceScope.launch {
+            try {
+                val policyDao = database.mdmPolicyDao()
+                val existing = policyDao.getPolicyByKey("parentLockActive")
+                if (existing == null || existing.value != "true") {
+                    Log.e(TAG, "[ANTI-TAMPER] Time manipulation verified! Activating instant kiosk-lock lockdown.")
+                    
+                    policyDao.insertOrUpdatePolicy(
+                        MdmPolicyEntity(
+                            key = "parentLockActive",
+                            value = "true",
+                            valueType = "boolean",
+                            permissionFlag = "GREY_OUT"
+                        )
+                    )
+                    
+                    database.auditLogDao().insertLog(
+                        com.example.data.AuditLogEntity(
+                            eventType = "TAMPER_ALERT",
+                            message = "WARNING: System clock modification or manual time settings detected! Instant device lockdown initiated.",
+                            isSynced = false
+                        )
+                    )
+
+                    // Instantly launch MainActivity lock screen
+                    val launchIntent = Intent(applicationContext, com.example.MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    }
+                    startActivity(launchIntent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to trigger anti-tamper lockdown", e)
+            }
+        }
     }
 }

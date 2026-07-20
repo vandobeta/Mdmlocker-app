@@ -44,6 +44,15 @@ data class FirebaseAuditLog(
 )
 
 @JsonClass(generateAdapter = true)
+data class FirebaseAppInfo(
+    val packageName: String,
+    val appName: String,
+    val isSystemApp: Boolean,
+    val timeUsedMinutes: Int = 0,
+    val status: String = "ALLOWED" // "ALLOWED", "DISABLED", "SUSPENDED", "BLACKLISTED"
+)
+
+@JsonClass(generateAdapter = true)
 data class FirebaseDataPayload(
     val deviceId: String,
     val schedules: Map<String, FirebaseSchedule>? = null,
@@ -51,5 +60,6 @@ data class FirebaseDataPayload(
     val auditLogs: Map<String, FirebaseAuditLog>? = null,
     val commands: Map<String, FirebaseCommand>? = null,
     val systemSettings: Map<String, String>? = null,
+    val installedApps: Map<String, FirebaseAppInfo>? = null,
     val lastUpdated: Long = System.currentTimeMillis()
 )

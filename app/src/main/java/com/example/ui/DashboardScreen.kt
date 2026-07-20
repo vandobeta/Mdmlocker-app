@@ -57,12 +57,16 @@ fun DashboardScreen(
     val deviceId by viewModel.deviceId.collectAsState()
     val policies by viewModel.policies.collectAsState()
 
-    val isParentLocked = remember(policies) {
-        policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
+    val isParentLocked = remember(policies, isProvisioned) {
+        isProvisioned && policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
     }
 
     val customLockMessage = remember(policies) {
         policies.find { it.key == "parentLockMessage" }?.value ?: "Device has been restricted by your parent"
+    }
+
+    val hideDevelopmentBypass = remember(policies) {
+        policies.any { it.key == "hideDevelopmentBypass" && it.value.lowercase() == "true" }
     }
 
     val isLockActive = !isProvisioned || isParentLocked
@@ -88,7 +92,8 @@ fun DashboardScreen(
                 onAttemptUnlock = { pin -> viewModel.attemptOfflineUnlock(pin) },
                 onForceUnlock = { viewModel.setProvisionedState(true) },
                 onRefreshStatus = { viewModel.fetchFromFirebase() },
-                syncStatus = syncStatus
+                syncStatus = syncStatus,
+                hideDevelopmentBypass = hideDevelopmentBypass
             )
         } else if (isParentLocked) {
             DeviceLockScreen(
@@ -102,6 +107,7 @@ fun DashboardScreen(
                 onForceUnlock = { viewModel.setProvisionedState(true) },
                 onRefreshStatus = { viewModel.fetchFromFirebase() },
                 syncStatus = syncStatus,
+                hideDevelopmentBypass = hideDevelopmentBypass,
                 onUnlockParent = {
                     viewModel.addOrUpdatePolicy(
                         MdmPolicyEntity(
@@ -172,7 +178,8 @@ fun DeviceLockScreen(
     onForceUnlock: () -> Unit,
     onRefreshStatus: () -> Unit,
     syncStatus: String,
-    onUnlockParent: (() -> Unit)? = null
+    onUnlockParent: (() -> Unit)? = null,
+    hideDevelopmentBypass: Boolean = false
 ) {
     val context = LocalContext.current
     var activeSubScreen by remember { mutableStateOf(1) } // 1 = Main Lock Screen, 2 = Parent PIN Override Screen
@@ -532,34 +539,36 @@ fun DeviceLockScreen(
             }
 
             // Quick bypass shortcut for testing / simulation
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF151010)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { 
-                            if (isProvisioned && onUnlockParent != null) {
-                                onUnlockParent()
-                            } else {
-                                onForceUnlock() 
+            if (!hideDevelopmentBypass) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF151010)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                if (isProvisioned && onUnlockParent != null) {
+                                    onUnlockParent()
+                                } else {
+                                    onForceUnlock() 
+                                }
+                            }
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.SettingsSuggest, contentDescription = "Sim", tint = Color.LightGray)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Development Override Bypass", style = MaterialTheme.typography.bodyMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Bypasses lock screen for testing", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             }
                         }
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.SettingsSuggest, contentDescription = "Sim", tint = Color.LightGray)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Development Override Bypass", style = MaterialTheme.typography.bodyMedium, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("Bypasses lock screen for testing", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        }
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Go", tint = Color.Gray)
                     }
-                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Go", tint = Color.Gray)
                 }
             }
         }

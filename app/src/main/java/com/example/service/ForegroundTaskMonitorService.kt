@@ -62,7 +62,7 @@ class ForegroundTaskMonitorService : Service() {
                 try {
                     val isProvisioned = sharedPrefs.getBoolean("is_provisioned", false)
                     val policies = db.mdmPolicyDao().getAllPolicies()
-                    val isParentLocked = policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
+                    val isParentLocked = isProvisioned && policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
                     val isLockScreenActive = !isProvisioned || isParentLocked
 
                     if (isLockScreenActive) {
