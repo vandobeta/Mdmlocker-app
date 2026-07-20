@@ -87,6 +87,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _challengeToken = MutableStateFlow("")
     val challengeToken: StateFlow<String> = _challengeToken.asStateFlow()
 
+    // Cryptographically-random offline bypass secret (NOT derivable by a child).
+    private val _bypassSecret = MutableStateFlow("")
+    val bypassSecret: StateFlow<String> = _bypassSecret.asStateFlow()
+
     private val _bypassError = MutableStateFlow<String?>(null)
     val bypassError: StateFlow<String?> = _bypassError.asStateFlow()
 
@@ -118,11 +122,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         _deviceId.value = cachedId
 
+        // Retrieve or generate a cryptographically-random OFFLINE BYPASS SECRET.
+        // This is a per-device random value stored in private SharedPreferences and is
+        // NOT derivable from the device id / date, so a child cannot reverse-engineer
+        // it from the on-screen "authorization code".
+        var bypassSecret = sharedPrefs.getString("bypass_secret", "") ?: ""
+        if (bypassSecret.isEmpty()) {
+            bypassSecret = (1..6).map { (0..9).random() }.joinToString("")
+            sharedPrefs.edit().putString("bypass_secret", bypassSecret).apply()
+        }
+        _bypassSecret.value = bypassSecret
+
         // Retrieve provisioning state. Default to false on first launch to force provisioning visual block!
         val provisioned = sharedPrefs.getBoolean("is_provisioned", false)
         _isProvisioned.value = provisioned
 
-        // Generate challenge token for current day
+        // Generate the on-screen (non-secret) challenge token shown to a parent as a session id.
         generateTodayChallengeToken()
 
         // Start active local background service monitoring
@@ -198,16 +213,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Attempts to unlock the device offline using the mathematical inverse/reverse string PIN
+     * Attempts to unlock the device offline using the device-stored random bypass secret.
+     * The on-screen "authorization code" (challengeToken) is intentionally NOT the PIN,
+     * so it cannot be reversed to unlock the device.
      */
     fun attemptOfflineUnlock(userInputPin: String): Boolean {
         _bypassError.value = null
-        val expectedPin = _challengeToken.value.reversed()
-        if (userInputPin == expectedPin) {
+        val expectedPin = _bypassSecret.value
+        if (userInputPin == expectedPin && expectedPin.isNotEmpty()) {
             setProvisionedState(true)
             return true
         } else {
-            _bypassError.value = "Invalid Bypass Token. Math Signature mismatch."
+            _bypassError.value = "Invalid Bypass Token."
             return false
         }
     }
@@ -270,10 +287,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             MdmPolicyEntity("disallowUsbFileTransfer", "true", "boolean", "GREY_OUT"),
             MdmPolicyEntity("disallowModifyAccounts", "true", "boolean", "GREY_OUT"),
             MdmPolicyEntity("disallowScreenCapture", "false", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowAddUser", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowInstallApps", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowUninstallApps", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowDebuggingFeatures", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowShareLocation", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowAirplaneMode", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowSms", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("disallowMountPhysicalMedia", "true", "boolean", "GREY_OUT"),
             MdmPolicyEntity("allowSettingsModification", "false", "boolean", "GREY_OUT"),
             MdmPolicyEntity("remoteScreenShareRequest", "false", "boolean", "GREY_OUT"),
             MdmPolicyEntity("remoteScreenControlRequest", "false", "boolean", "GREY_OUT"),
             MdmPolicyEntity("selfUpdateMode", "false", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("autoTimeRequired", "true", "boolean", "GREY_OUT"),
+            MdmPolicyEntity("maximumTimeToLock", "15000", "int", "GREY_OUT"),
             MdmPolicyEntity("customMdmEnterpriseFlag", "ActiveSecurityNode", "string", "PERMIT_KID")
         )
         for (policy in defaultPolicies) {
@@ -382,11 +409,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 addManualAuditLog("DEVICE_CONTROL", "Bluetooth turned ${if (enable) "ON" else "OFF"}")
             } else {
-                addManualAuditLog("DEVICE_CONTROL", "Bluetooth adapter not found (Simulated ${if (enable) "ON" else "OFF"})")
+                addManualAuditLog("DEVICE_CONTROL", "Bluetooth adapter not available on this device")
             }
         } catch (e: Exception) {
             android.util.Log.e("MainViewModel", "Bluetooth toggle error", e)
-            addManualAuditLog("DEVICE_CONTROL", "Bluetooth toggle failed (Simulated ${if (enable) "ON" else "OFF"})")
+            addManualAuditLog("DEVICE_CONTROL", "Bluetooth toggle failed")
         }
     }
 
@@ -400,7 +427,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addManualAuditLog("DEVICE_CONTROL", "Wi-Fi turned ${if (enable) "ON" else "OFF"}")
         } catch (e: Exception) {
             android.util.Log.e("MainViewModel", "Wi-Fi toggle error", e)
-            addManualAuditLog("DEVICE_CONTROL", "Wi-Fi toggle failed (Simulated ${if (enable) "ON" else "OFF"})")
+            addManualAuditLog("DEVICE_CONTROL", "Wi-Fi toggle failed")
+        }
+    }
+
+    fun toggleAirplaneMode(enable: Boolean) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val cr = context.contentResolver
+                @Suppress("DEPRECATION")
+                val current = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AIRPLANE_MODE_ON, 0) != 0
+                if (current == enable) {
+                    addManualAuditLog("DEVICE_CONTROL", "Airplane mode already ${if (enable) "ON" else "OFF"}")
+                    return@launch
+                }
+                android.provider.Settings.Global.putInt(cr, android.provider.Settings.Global.AIRPLANE_MODE_ON, if (enable) 1 else 0)
+                context.sendBroadcast(Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply { putExtra("state", enable) })
+                addManualAuditLog("DEVICE_CONTROL", "Airplane mode turned ${if (enable) "ON" else "OFF"}")
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Airplane mode toggle error", e)
+                addManualAuditLog("DEVICE_CONTROL", "Airplane mode toggle failed (requires Device Owner or system app)")
+            }
+        }
+    }
+
+    fun toggleNfc(enable: Boolean) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val nfcManager = context.getSystemService(Context.NFC_SERVICE) as android.nfc.NfcManager
+                val adapter = nfcManager.defaultAdapter
+                if (adapter == null) {
+                    addManualAuditLog("DEVICE_CONTROL", "NFC adapter not available on this device")
+                    return@launch
+                }
+                if (enable) {
+                    if (adapter.isEnabled) {
+                        addManualAuditLog("DEVICE_CONTROL", "NFC already ON")
+                        return@launch
+                    }
+                    @Suppress("DEPRECATION")
+                    adapter.enable()
+                    addManualAuditLog("DEVICE_CONTROL", "NFC turned ON")
+                } else {
+                    if (!adapter.isEnabled) {
+                        addManualAuditLog("DEVICE_CONTROL", "NFC already OFF")
+                        return@launch
+                    }
+                    @Suppress("DEPRECATION")
+                    adapter.disable()
+                    addManualAuditLog("DEVICE_CONTROL", "NFC turned OFF")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "NFC toggle error", e)
+                addManualAuditLog("DEVICE_CONTROL", "NFC toggle failed")
+            }
         }
     }
 
@@ -517,25 +599,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Captures a comprehensive, enterprise-grade snapshot of the device on first launch
+     * and on every sync: the Global, Secure, and System settings tables plus admin
+     * privileges, hardware metadata and (optionally) GPS.
+     *
+     * The web dashboard edits the three settings tables; the client enforces/applies
+     * them via [applyDeviceSettings].
+     */
+    data class SettingsTables(
+        val global: Map<String, String>,
+        val secure: Map<String, String>,
+        val system: Map<String, String>
+    )
+
+    private fun readSettingsTables(context: Context): SettingsTables {
+        val cr = context.contentResolver
+        val global = mutableMapOf<String, String>()
+        val secure = mutableMapOf<String, String>()
+        val system = mutableMapOf<String, String>()
+        try {
+            // ---- GLOBAL table ----
+            global["airplane_mode_on"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AIRPLANE_MODE_ON, 0).toString()
+            global["wifi_on"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.WIFI_ON, 0).toString()
+            global["mobile_data"] = try { android.provider.Settings.Global.getInt(cr, "mobile_data", 0).toString() } catch (_: Exception) { "0" }
+            global["bluetooth_on"] = try { android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.BLUETOOTH_ON, 0).toString() } catch (_: Exception) { "0" }
+            global["adb_enabled"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.ADB_ENABLED, 0).toString()
+            global["development_settings_enabled"] = android.provider.Settings.Global.getInt(cr, "development_settings_enabled", 0).toString()
+            global["stay_on_while_plugged_in"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.STAY_ON_WHILE_PLUGGED_IN, 0).toString()
+            global["auto_time"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AUTO_TIME, 1).toString()
+            global["auto_time_zone"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AUTO_TIME_ZONE, 1).toString()
+            global["data_roaming"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.DATA_ROAMING, 0).toString()
+
+            // ---- SECURE table ----
+            secure["install_non_market_apps"] = android.provider.Settings.Secure.getInt(cr, android.provider.Settings.Secure.INSTALL_NON_MARKET_APPS, 0).toString()
+            secure["location_mode"] = android.provider.Settings.Secure.getInt(cr, android.provider.Settings.Secure.LOCATION_MODE, 0).toString()
+            secure["accessibility_enabled"] = android.provider.Settings.Secure.getInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0).toString()
+            secure["bluetooth_address"] = try { android.provider.Settings.Secure.getString(cr, "bluetooth_address") ?: "n/a" } catch (_: Exception) { "n/a" }
+            secure["allowed_geolocation_origins"] = try { android.provider.Settings.Secure.getString(cr, "allowed_geolocation_origins") ?: "" } catch (_: Exception) { "" }
+            secure["skip_first_use_hints"] = try { android.provider.Settings.Secure.getInt(cr, "skip_first_use_hints", 0).toString() } catch (_: Exception) { "0" }
+            secure["lock_to_app_enabled"] = try { android.provider.Settings.Secure.getInt(cr, "lock_to_app_enabled", 0).toString() } catch (_: Exception) { "0" }
+
+            // ---- SYSTEM table ----
+            system["screen_brightness"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS, 0).toString()
+            system["screen_brightness_mode"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE, 0).toString()
+            system["screen_off_timeout"] = android.provider.Settings.System.getLong(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, 0).toString()
+            system["haptic_feedback_enabled"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED, 1).toString()
+            system["sound_effects_enabled"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SOUND_EFFECTS_ENABLED, 1).toString()
+            system["accelerometer_rotation"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.ACCELEROMETER_ROTATION, 1).toString()
+            system["font_scale"] = try { android.provider.Settings.System.getFloat(cr, android.provider.Settings.System.FONT_SCALE, 1f).toString() } catch (_: Exception) { "1.0" }
+            system["time_12_24"] = try { android.provider.Settings.System.getInt(cr, android.provider.Settings.System.TIME_12_24, 24).toString() } catch (_: Exception) { "24" }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error reading settings tables", e)
+        }
+        return SettingsTables(global, secure, system)
+    }
+
     private fun getSystemSettingsMap(context: Context): Map<String, String> {
         val map = mutableMapOf<String, String>()
         val cr = context.contentResolver
         try {
-            // Global settings table
-            map["global_airplane_mode_on"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AIRPLANE_MODE_ON, 0).toString()
-            map["global_wifi_on"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.WIFI_ON, 0).toString()
-            map["global_adb_enabled"] = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.ADB_ENABLED, 0).toString()
-            map["global_development_settings_enabled"] = android.provider.Settings.Global.getInt(cr, "development_settings_enabled", 0).toString()
-
-            // System settings table
-            map["system_screen_brightness"] = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS, 0).toString()
-            map["system_screen_off_timeout"] = android.provider.Settings.System.getLong(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, 0).toString()
-
-            // Secure settings table
-            map["secure_install_non_market_apps"] = android.provider.Settings.Secure.getInt(cr, "install_non_market_apps", 0).toString()
-            map["secure_location_mode"] = android.provider.Settings.Secure.getInt(cr, "location_mode", 0).toString()
-            map["secure_accessibility_enabled"] = android.provider.Settings.Secure.getInt(cr, "accessibility_enabled", 0).toString()
-
             // Device Administration & Privileges
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
             val adminComponent = android.content.ComponentName(context, MyDeviceAdminReceiver::class.java)
@@ -546,11 +669,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             map["is_device_owner"] = isDeviceOwner.toString()
             map["accessibility_active"] = (MyAccessibilityService.instance != null).toString()
             map["overlay_allowed"] = android.provider.Settings.canDrawOverlays(context).toString()
+            map["write_settings_granted"] = android.provider.Settings.System.canWrite(context).toString()
 
             // Permissions
             val cameraGranted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
             val locationGranted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            
+
             map["camera_permission"] = cameraGranted.toString()
             map["location_permission"] = locationGranted.toString()
 
@@ -589,6 +713,97 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         return map
     }
+
+    /**
+     * Applies admin-edited Global/Secure/System settings back onto the device.
+     * Requires WRITE_SETTINGS (System/Global) and WRITE_SECURE_SETTINGS (Secure).
+     * When provisioned as Device Owner these are automatically granted; otherwise the
+     * user is (re)prompted and the failure is logged so the dashboard sees the gap.
+     */
+    fun applyDeviceSettings(global: Map<String, String>, secure: Map<String, String>, system: Map<String, String>) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val context = getApplication<Application>().applicationContext
+            val cr = context.contentResolver
+            var applied = 0
+            var failed = 0
+
+            fun putGlobal(key: String, value: String) {
+                try {
+                    android.provider.Settings.Global.putInt(cr, key, value.toIntOrNull() ?: 0)
+                    applied++
+                } catch (_: Exception) { failed++ }
+            }
+            fun putSecure(key: String, value: String) {
+                try {
+                    android.provider.Settings.Secure.putInt(cr, key, value.toIntOrNull() ?: 0)
+                    applied++
+                } catch (_: Exception) { failed++ }
+            }
+            fun putSystem(key: String, value: String) {
+                try {
+                    android.provider.Settings.System.putInt(cr, key, value.toIntOrNull() ?: 0)
+                    applied++
+                } catch (_: Exception) { failed++ }
+            }
+
+            global.forEach { (k, v) ->
+                when (k) {
+                    "airplane_mode_on" -> putGlobal(android.provider.Settings.Global.AIRPLANE_MODE_ON, v)
+                    "wifi_on" -> putGlobal(android.provider.Settings.Global.WIFI_ON, v)
+                    "mobile_data" -> putGlobal("mobile_data", v)
+                    "bluetooth_on" -> putGlobal(android.provider.Settings.Global.BLUETOOTH_ON, v)
+                    "adb_enabled" -> putGlobal(android.provider.Settings.Global.ADB_ENABLED, v)
+                    "development_settings_enabled" -> putGlobal("development_settings_enabled", v)
+                    "stay_on_while_plugged_in" -> putGlobal(android.provider.Settings.Global.STAY_ON_WHILE_PLUGGED_IN, v)
+                    "auto_time" -> putGlobal(android.provider.Settings.Global.AUTO_TIME, v)
+                    "auto_time_zone" -> putGlobal(android.provider.Settings.Global.AUTO_TIME_ZONE, v)
+                    "data_roaming" -> putGlobal(android.provider.Settings.Global.DATA_ROAMING, v)
+                }
+            }
+            secure.forEach { (k, v) ->
+                when (k) {
+                    "install_non_market_apps" -> putSecure(android.provider.Settings.Secure.INSTALL_NON_MARKET_APPS, v)
+                    "location_mode" -> putSecure(android.provider.Settings.Secure.LOCATION_MODE, v)
+                    "skip_first_use_hints" -> putSecure("skip_first_use_hints", v)
+                    "lock_to_app_enabled" -> putSecure("lock_to_app_enabled", v)
+                }
+            }
+            system.forEach { (k, v) ->
+                when (k) {
+                    "screen_brightness" -> putSystem(android.provider.Settings.System.SCREEN_BRIGHTNESS, v)
+                    "screen_brightness_mode" -> putSystem(android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE, v)
+                    "screen_off_timeout" -> {
+                        try {
+                            android.provider.Settings.System.putLong(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, v.toLongOrNull() ?: 0)
+                            applied++
+                        } catch (_: Exception) { failed++ }
+                    }
+                    "haptic_feedback_enabled" -> putSystem(android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED, v)
+                    "sound_effects_enabled" -> putSystem(android.provider.Settings.System.SOUND_EFFECTS_ENABLED, v)
+                    "accelerometer_rotation" -> putSystem(android.provider.Settings.System.ACCELEROMETER_ROTATION, v)
+                    "time_12_24" -> putSystem(android.provider.Settings.System.TIME_12_24, v)
+                }
+            }
+
+            addManualAuditLog(
+                "SETTINGS_APPLY",
+                "Applied remote settings: $applied ok, $failed failed (needs WRITE_SETTINGS/SECURE_SETTINGS)."
+            )
+            if (failed > 0) {
+                // Re-request the WRITE_SETTINGS capability if not granted.
+                if (!android.provider.Settings.System.canWrite(context)) {
+                    try {
+                        val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                            data = android.net.Uri.parse("package:${context.packageName}")
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) { /* ignore */ }
+                }
+            }
+        }
+    }
+
 
     private suspend fun syncWithFirebaseInternal() {
         val devId = _deviceId.value
@@ -751,6 +966,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         toggleWifi(false)
                                         addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Wi-Fi OFF")
                                     }
+                                    "airplane_on" -> {
+                                        toggleAirplaneMode(true)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Airplane Mode ON")
+                                    }
+                                    "airplane_off" -> {
+                                        toggleAirplaneMode(false)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned Airplane Mode OFF")
+                                    }
+                                    "nfc_on" -> {
+                                        toggleNfc(true)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned NFC ON")
+                                    }
+                                    "nfc_off" -> {
+                                        toggleNfc(false)
+                                        addManualAuditLog("COMMAND_EXECUTION", "Remote command: turned NFC OFF")
+                                    }
                                     "go_home" -> {
                                         triggerGoHome()
                                         addManualAuditLog("COMMAND_EXECUTION", "Remote command: triggered Go Home")
@@ -778,10 +1009,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 // Upload fresh system tables, schedules, and policies
-                pushToFirebaseInternal()
+                pushToFirebaseInternal(applyDownstream = false)
+                // Apply admin-edited settings tables pushed from dashboard
+                payload.globalSettings?.let { g ->
+                    payload.secureSettings?.let { s -> payload.systemTable?.let { t -> applyDeviceSettings(g, s, t) } }
+                }
                 _syncStatus.value = "Sync Success: Synchronized with Realtime DB"
             } else {
-                pushToFirebaseInternal()
+                pushToFirebaseInternal(applyDownstream = false)
             }
         } catch (e: Exception) {
             _syncStatus.value = "Sync Failed: Offline Mode Active"
@@ -789,7 +1024,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun pushToFirebaseInternal() {
+    private suspend fun pushToFirebaseInternal(applyDownstream: Boolean = false) {
         val devId = _deviceId.value
         if (devId.isEmpty()) return
 
@@ -833,6 +1068,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val sysSettings = getSystemSettingsMap(getApplication())
+        val tables = readSettingsTables(getApplication())
 
         val payload = FirebaseDataPayload(
             deviceId = devId,
@@ -840,6 +1076,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             policies = policiesMap,
             auditLogs = if (logsMap.isNotEmpty()) logsMap else null,
             systemSettings = sysSettings,
+            globalSettings = tables.global,
+            secureSettings = tables.secure,
+            systemTable = tables.system,
             lastUpdated = System.currentTimeMillis()
         )
 

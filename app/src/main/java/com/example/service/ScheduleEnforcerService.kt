@@ -247,6 +247,9 @@ class ScheduleEnforcerService : Service() {
                     for (policy in policies) {
                         if (policy.permissionFlag == "GREY_OUT") {
                             applyMdmPolicy(policy, dpm, adminComponent, isDeviceOwner, isAdminActive)
+                        } else {
+                            // PERMIT_KID: release the restriction so the local user may change it.
+                            releaseMdmPolicyIfNeeded(policy, dpm, adminComponent)
                         }
                     }
 
@@ -385,9 +388,55 @@ class ScheduleEnforcerService : Service() {
     }
 
     /**
-     * Applies corporate EMM rules using the DevicePolicyManager and UserManager APIs.
-     * Instantly rolls back user configurations if they violate corporate policy rules.
+     * When a policy is flagged PERMIT_KID (allow local edits), ensure we are NOT
+     * pinning the device into a restricted state, so the user can change it.
      */
+    private fun releaseMdmPolicyIfNeeded(
+        policy: MdmPolicyEntity,
+        dpm: DevicePolicyManager,
+        adminComponent: ComponentName
+    ) {
+        if (!dpm.isAdminActive(adminComponent)) return
+        try {
+            when (policy.key) {
+                "cameraDisabled" -> {
+                    if (dpm.getCameraDisabled(adminComponent)) {
+                        dpm.setCameraDisabled(adminComponent, false)
+                    }
+                }
+                "statusBarDisabled" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && dpm.isDeviceOwnerApp(packageName)) {
+                        try { dpm.setStatusBarDisabled(adminComponent, false) } catch (_: Exception) {}
+                    }
+                }
+                else -> {
+                    // User restrictions: clear any restriction we previously set so the
+                    // user is free to toggle it locally.
+                    val restriction = when (policy.key) {
+                        "disallowOutgoingCalls" -> UserManager.DISALLOW_OUTGOING_CALLS
+                        "disallowConfigCredentials" -> UserManager.DISALLOW_CONFIG_CREDENTIALS
+                        "disallowFactoryReset" -> UserManager.DISALLOW_FACTORY_RESET
+                        "disallowSafeBoot" -> UserManager.DISALLOW_SAFE_BOOT
+                        "disallowUsbFileTransfer" -> UserManager.DISALLOW_USB_FILE_TRANSFER
+                        "disallowModifyAccounts" -> UserManager.DISALLOW_MODIFY_ACCOUNTS
+                        "disallowAddUser" -> UserManager.DISALLOW_ADD_USER
+                        "disallowInstallApps" -> UserManager.DISALLOW_INSTALL_APPS
+                        "disallowUninstallApps" -> UserManager.DISALLOW_UNINSTALL_APPS
+                        "disallowDebuggingFeatures" -> UserManager.DISALLOW_DEBUGGING_FEATURES
+                        "disallowShareLocation" -> UserManager.DISALLOW_SHARE_LOCATION
+                        "disallowSms" -> UserManager.DISALLOW_SMS
+                        "disallowMountPhysicalMedia" -> UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA
+                        "disallowAirplaneMode" -> UserManager.DISALLOW_AIRPLANE_MODE
+                        else -> null
+                    }
+                    restriction?.let { dpm.applyUserRestrictionSafe(adminComponent, it, false) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing policy ${policy.key}", e)
+        }
+    }
+
     private fun applyMdmPolicy(
         policy: MdmPolicyEntity,
         dpm: DevicePolicyManager,
@@ -400,67 +449,80 @@ class ScheduleEnforcerService : Service() {
         val key = policy.key
         val value = policy.value
         val isTrue = value.lowercase() == "true"
+        val enforce = policy.permissionFlag == "GREY_OUT"
 
         try {
             when (key) {
                 "cameraDisabled" -> {
-                    if (dpm.getCameraDisabled(adminComponent) != isTrue) {
+                    if (enforce && dpm.getCameraDisabled(adminComponent) != isTrue) {
                         Log.w(TAG, "[POLICY ROLLBACK] Camera state mismatch. Forcing cameraDisabled=$isTrue")
                         dpm.setCameraDisabled(adminComponent, isTrue)
                     }
                 }
                 "statusBarDisabled" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isDeviceOwner) {
-                        try {
-                            // Note: We catch security exceptions since setStatusBarDisabled is strictly Device Owner
-                            dpm.setStatusBarDisabled(adminComponent, isTrue)
-                        } catch (e: Exception) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isDeviceOwner && enforce) {
+                        try { dpm.setStatusBarDisabled(adminComponent, isTrue) } catch (e: Exception) {
                             Log.e(TAG, "Failed to enforce statusBarDisabled", e)
                         }
                     }
                 }
                 "minimumPasswordLength" -> {
-                    val reqLength = value.toIntOrNull() ?: 0
-                    if (dpm.getPasswordMinimumLength(adminComponent) != reqLength) {
-                        Log.w(TAG, "[POLICY ROLLBACK] Password min length mismatch. Forcing minLength=$reqLength")
-                        dpm.setPasswordQuality(adminComponent, DevicePolicyManager.PASSWORD_QUALITY_SOMETHING)
-                        dpm.setPasswordMinimumLength(adminComponent, reqLength)
+                    if (enforce) {
+                        val reqLength = value.toIntOrNull() ?: 0
+                        if (dpm.getPasswordMinimumLength(adminComponent) != reqLength) {
+                            Log.w(TAG, "[POLICY ROLLBACK] Password min length mismatch. Forcing minLength=$reqLength")
+                            dpm.setPasswordQuality(adminComponent, DevicePolicyManager.PASSWORD_QUALITY_SOMETHING)
+                            dpm.setPasswordMinimumLength(adminComponent, reqLength)
+                        }
                     }
                 }
-                "disallowOutgoingCalls" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_OUTGOING_CALLS, isTrue)
+                "maximumTimeToLock" -> {
+                    if (enforce) {
+                        val ms = value.toLongOrNull() ?: 15000L
+                        if (dpm.getMaximumTimeToLock(adminComponent) != ms) dpm.setMaximumTimeToLock(adminComponent, ms)
                     }
                 }
-                "disallowConfigCredentials" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        // Secure boundaries: prevents child from injecting custom proxy/VPN certificates
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_CONFIG_CREDENTIALS, isTrue)
+                "autoTimeRequired" -> {
+                    if (enforce && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        try { if (dpm.getAutoTimeRequired(adminComponent) != isTrue) dpm.setAutoTimeRequired(adminComponent, isTrue) } catch (_: Exception) {}
                     }
                 }
-                "disallowFactoryReset" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_FACTORY_RESET, isTrue)
-                    }
-                }
-                "disallowSafeBoot" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_SAFE_BOOT, isTrue)
-                    }
-                }
-                "disallowUsbFileTransfer" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER, isTrue)
-                    }
-                }
-                "disallowModifyAccounts" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        toggleUserRestriction(dpm, adminComponent, UserManager.DISALLOW_MODIFY_ACCOUNTS, isTrue)
-                    }
-                }
+                "disallowOutgoingCalls" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_OUTGOING_CALLS, isTrue && enforce)
+                "disallowConfigCredentials" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_CONFIG_CREDENTIALS, isTrue && enforce)
+                "disallowFactoryReset" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_FACTORY_RESET, isTrue && enforce)
+                "disallowSafeBoot" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_SAFE_BOOT, isTrue && enforce)
+                "disallowUsbFileTransfer" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER, isTrue && enforce)
+                "disallowModifyAccounts" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_MODIFY_ACCOUNTS, isTrue && enforce)
+                "disallowAddUser" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_ADD_USER, isTrue && enforce)
+                "disallowInstallApps" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_INSTALL_APPS, isTrue && enforce)
+                "disallowUninstallApps" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_UNINSTALL_APPS, isTrue && enforce)
+                "disallowDebuggingFeatures" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES, isTrue && enforce)
+                "disallowShareLocation" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_SHARE_LOCATION, isTrue && enforce)
+                "disallowSms" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_SMS, isTrue && enforce)
+                "disallowMountPhysicalMedia" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA, isTrue && enforce)
+                "disallowAirplaneMode" -> dpm.applyUserRestrictionSafe(adminComponent, UserManager.DISALLOW_AIRPLANE_MODE, isTrue && enforce)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error applying EMM watchdog rule for $key", e)
+        }
+    }
+
+    private fun DevicePolicyManager.applyUserRestrictionSafe(
+        admin: ComponentName,
+        restriction: String,
+        enable: Boolean
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                val has = getUserRestrictions(admin).getBoolean(restriction, false)
+                if (has != enable) {
+                    Log.w(TAG, "[EMM RESTRICTION] Toggling user restriction $restriction -> $enable")
+                    if (enable) addUserRestriction(admin, restriction)
+                    else clearUserRestriction(admin, restriction)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed toggling user restriction: $restriction", e)
+            }
         }
     }
 
@@ -470,11 +532,8 @@ class ScheduleEnforcerService : Service() {
                 val hasRestriction = dpm.getUserRestrictions(admin).getBoolean(restrictionKey, false)
                 if (hasRestriction != enable) {
                     Log.w(TAG, "[EMM RESTRICTION] Toggling user restriction $restrictionKey -> $enable")
-                    if (enable) {
-                        dpm.addUserRestriction(admin, restrictionKey)
-                    } else {
-                        dpm.clearUserRestriction(admin, restrictionKey)
-                    }
+                    if (enable) dpm.addUserRestriction(admin, restrictionKey)
+                    else dpm.clearUserRestriction(admin, restrictionKey)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed toggling user restriction: $restrictionKey", e)

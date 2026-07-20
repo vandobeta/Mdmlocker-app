@@ -53,6 +53,7 @@ fun DashboardScreen(
 ) {
     val isProvisioned by viewModel.isProvisioned.collectAsState()
     val challengeToken by viewModel.challengeToken.collectAsState()
+    val bypassSecret by viewModel.bypassSecret.collectAsState()
     val bypassError by viewModel.bypassError.collectAsState()
     val deviceId by viewModel.deviceId.collectAsState()
     val policies by viewModel.policies.collectAsState()
@@ -423,7 +424,7 @@ fun DeviceLockScreen(
                         )
 
                         Text(
-                            text = "Please provide this code to your parent to receive your unlock PIN.",
+                            text = "If a parent has provided you with the 6-digit recovery PIN, enter it below. The session code shown is NOT the PIN.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFD3C5C5)
                         )
@@ -438,7 +439,7 @@ fun DeviceLockScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "AUTHORIZATION CODE",
+                                    text = "SESSION CODE",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.LightGray
                                 )
@@ -482,8 +483,8 @@ fun DeviceLockScreen(
                         Button(
                             onClick = {
                                 if (isProvisioned && onUnlockParent != null) {
-                                    val expectedPin = challengeToken.reversed()
-                                    if (bypassPinInput == expectedPin) {
+                                    val expectedPin = bypassSecret
+                                    if (bypassPinInput == expectedPin && expectedPin.isNotEmpty()) {
                                         onUnlockParent()
                                         bypassPinInput = ""
                                     } else {
@@ -2148,6 +2149,36 @@ fun MdmDeviceQuickControls(viewModel: MainViewModel) {
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+            // Row 3: Airplane & NFC
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Airplane Mode", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = false,
+                            onCheckedChange = { viewModel.toggleAirplaneMode(it) }
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("NFC", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Switch(
+                            checked = false,
+                            onCheckedChange = { viewModel.toggleNfc(it) }
+                        )
+                    }
+                }
+            }
 
             // Navigation Actions: Go Home / Go Back
             Row(

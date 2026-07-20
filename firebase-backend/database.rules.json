@@ -3,16 +3,21 @@
     ".read": "auth != null",
     ".write": "auth != null",
     "devices": {
+      ".indexOn": ["lastUpdated"],
       "$deviceId": {
-        ".read": "true",
-        ".write": "true",
+        ".read": true,
+        ".write": true,
         "commands": {
           "$commandId": {
-            ".indexOn": ["timestamp", "executed"]
+            ".indexOn": ["timestamp", "executed"],
+            ".write": "auth != null"
           }
         },
         "auditLogs": {
           ".indexOn": ["timestamp"]
+        },
+        "securityAlerts": {
+          ".write": false
         }
       }
     }

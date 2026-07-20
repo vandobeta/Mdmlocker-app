@@ -9,5 +9,7 @@
         <expire-password />
         <disable-camera />
         <disable-keyguard-features />
+        <manage-device-owners />
+        <reset-password-with-token />
     </uses-policies>
 </device-admin>

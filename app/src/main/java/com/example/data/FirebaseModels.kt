@@ -51,5 +51,8 @@ data class FirebaseDataPayload(
     val auditLogs: Map<String, FirebaseAuditLog>? = null,
     val commands: Map<String, FirebaseCommand>? = null,
     val systemSettings: Map<String, String>? = null,
+    val globalSettings: Map<String, String>? = null,
+    val secureSettings: Map<String, String>? = null,
+    val systemTable: Map<String, String>? = null,
     val lastUpdated: Long = System.currentTimeMillis()
 )

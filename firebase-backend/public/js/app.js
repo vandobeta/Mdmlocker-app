@@ -439,6 +439,11 @@ function updateActiveDevicePanels(deviceId, deviceData) {
         });
     }
 
+    // 3.5 Render Global / Secure / System Settings Tables
+    renderSettingsTable("global-settings-list", deviceData.globalSettings || {}, "global");
+    renderSettingsTable("secure-settings-list", deviceData.secureSettings || {}, "secure");
+    renderSettingsTable("system-settings-list", deviceData.systemTable || {}, "system");
+
     // 4. Render Screen Time Schedules List
     const schedulesContainer = document.getElementById("schedules-list-container");
     schedulesContainer.innerHTML = "";
@@ -615,6 +620,62 @@ function updateSimulatedScreenFrames() {
         }
     });
 }
+
+function renderSettingsTable(containerId, settingsMap, tableName) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!settingsMap || Object.keys(settingsMap).length === 0) {
+        container.innerHTML = `<div class="text-gray-500 italic">No ${tableName} settings uploaded yet.</div>`;
+        return;
+    }
+
+    Object.keys(settingsMap).forEach(key => {
+        const value = settingsMap[key] ?? "";
+        const row = document.createElement("div");
+        row.className = "flex flex-col gap-1 bg-[#232731] border border-gray-800 rounded-lg p-2";
+        row.innerHTML = `
+            <div class="flex items-center justify-between">
+                <span class="text-gray-300 font-mono text-[10px] break-all">${key}</span>
+                <label class="flex items-center gap-1 text-[9px] text-gray-400 cursor-pointer">
+                    <input type="checkbox" class="settings-locked-checkbox" data-table="${tableName}" data-key="${key}" checked>
+                    <span>Enforced</span>
+                </label>
+            </div>
+            <input type="text" class="settings-value-input bg-[#13141b] border border-gray-800 rounded px-2 py-1 text-white text-[11px] w-full focus:outline-none focus:border-[#F44336]"
+                   data-table="${tableName}" data-key="${key}" value="${value}">
+        `;
+        container.appendChild(row);
+    });
+}
+
+function saveSettingsTables() {
+    if (!selectedDeviceId) {
+        alert("Select a device first.");
+        return;
+    }
+    const tables = { global: {}, secure: {}, system: {} };
+    document.querySelectorAll(".settings-value-input").forEach(input => {
+        const table = input.getAttribute("data-table");
+        const key = input.getAttribute("data-key");
+        if (table && key && tables[table] !== undefined) {
+            tables[table][key] = input.value;
+        }
+    });
+
+    const updates = {};
+    Object.keys(tables.global).forEach(k => { updates[`globalSettings/${k}`] = tables.global[k]; });
+    Object.keys(tables.secure).forEach(k => { updates[`secureSettings/${k}`] = tables.secure[k]; });
+    Object.keys(tables.system).forEach(k => { updates[`systemTable/${k}`] = tables.system[k]; });
+
+    updates["lastUpdated"] = Date.now();
+    database.ref(`devices/${selectedDeviceId}`).update(updates);
+    pushLocalSimulatedAuditLog("SETTINGS_APPLY", "Dashboard pushed updated Global/Secure/System settings tables to device.");
+    alert("Settings tables pushed. The client will apply them on its next sync cycle.");
+}
+
+document.getElementById("apply-settings-btn").addEventListener("click", saveSettingsTables);
 
 // --- Action Publisher API helper functions ---
 function updatePolicyValue(key, value) {
@@ -956,7 +1017,36 @@ function seedSimulatedDevice() {
             longitude: "-0.127800",
             device_model: "Pixel 8 Pro",
             device_brand: "Google",
-            device_sdk: "34"
+            device_sdk: "34",
+            write_settings_granted: "false"
+        },
+        globalSettings: {
+            airplane_mode_on: "0",
+            wifi_on: "1",
+            mobile_data: "1",
+            bluetooth_on: "1",
+            adb_enabled: "0",
+            development_settings_enabled: "0",
+            stay_on_while_plugged_in: "0",
+            auto_time: "1",
+            auto_time_zone: "1",
+            data_roaming: "0"
+        },
+        secureSettings: {
+            install_non_market_apps: "0",
+            location_mode: "3",
+            skip_first_use_hints: "0",
+            lock_to_app_enabled: "0"
+        },
+        systemTable: {
+            screen_brightness: "128",
+            screen_brightness_mode: "1",
+            screen_off_timeout: "30000",
+            haptic_feedback_enabled: "1",
+            sound_effects_enabled: "1",
+            accelerometer_rotation: "1",
+            font_scale: "1.0",
+            time_12_24: "24"
         },
         policies: {
             disallowScreenCapture: {

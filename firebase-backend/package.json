@@ -1,0 +1,14 @@
+{
+  "name": "dbs-familyguard-dashboard",
+  "version": "2.0.0",
+  "description": "DBS FamilyGuard Enterprise Administration Console - Static Dashboard Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=16"
+  }
+}

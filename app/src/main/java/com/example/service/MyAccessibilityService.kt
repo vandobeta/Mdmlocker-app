@@ -72,6 +72,30 @@ class MyAccessibilityService : AccessibilityService() {
 
             val policies = db.mdmPolicyDao().getAllPolicies()
             val isParentLocked = policies.any { it.key == "parentLockActive" && it.value.lowercase() == "true" }
+            val isLocked = !isProvisioned || isParentLocked
+
+            // Defensive: if the user attempts to disable this Accessibility Service,
+            // block the settings panel and restore the service.
+            if (isLocked && isAccessibilitySettingsPackage(packageName)) {
+                logBlock(db, "ACCESSIBILITY_BLOCK", "Attempted to open Accessibility settings. Blocked.")
+                launchLockScreen()
+                return@launch
+            }
+
+            // Defensive: if the user attempts to open developer options or ADB settings,
+            // block them when under lockdown.
+            if (isLocked && isDevToolsPackage(packageName)) {
+                logBlock(db, "ACCESSIBILITY_BLOCK", "Attempted to open Developer Options/ADB settings. Blocked.")
+                launchLockScreen()
+                return@launch
+            }
+
+            // Defensive: block uninstall/package installer UI when locked.
+            if (isLocked && isPackageInstallerPackage(packageName)) {
+                logBlock(db, "ACCESSIBILITY_BLOCK", "Attempted to open Package Installer/Uninstaller. Blocked.")
+                launchLockScreen()
+                return@launch
+            }
 
             // Prevent launching other apps if not provisioned OR if parent lock is active!
             if (!isProvisioned || isParentLocked) {
@@ -94,8 +118,6 @@ class MyAccessibilityService : AccessibilityService() {
                                packageName == "com.android.server.telecom"
 
                 if (packageName !in allowedPackages && !isDialer) {
-                    Log.w(TAG, "[ACCESSIBILITY BLOCK] Device locked. Blocking app launch: $packageName")
-                    
                     val logType = if (!isProvisioned) "ACCESS_BLOCKED" else "POLICY_ENFORCEMENT"
                     val logMsg = if (!isProvisioned) {
                         "Device not authorised yet. Blocked launch: $packageName"
@@ -103,17 +125,9 @@ class MyAccessibilityService : AccessibilityService() {
                         "Device locked by parent. Blocked launch: $packageName"
                     }
 
-                    // Save to local logs
-                    db.auditLogDao().insertLog(
-                        AuditLogEntity(
-                            eventType = logType,
-                            message = logMsg,
-                            isSynced = false
-                        )
-                    )
-
-                    // Return to home screen or force launch our app
+                    logBlock(db, logType, logMsg)
                     launchLockScreen()
+                    return@launch
                 }
                 return@launch
             }
@@ -129,7 +143,6 @@ class MyAccessibilityService : AccessibilityService() {
             for (schedule in schedules) {
                 if (!schedule.isEnabled) continue
 
-                // Check if package matches schedule
                 val mappedPackages = mapAppNameToPackages(schedule.targetName)
                 if (mappedPackages.contains(packageName) || packageName == schedule.targetName) {
                     val dayMatches = schedule.daysOfWeek.equals("Daily", ignoreCase = true) ||
@@ -146,31 +159,13 @@ class MyAccessibilityService : AccessibilityService() {
                             currentTimeInMinutes >= startTotalMinutes || currentTimeInMinutes <= endTotalMinutes
                         }
 
-                        // If NOT currently in interval, access is restricted!
                         if (!isCurrentlyInInterval) {
-                            Log.w(TAG, "[ACCESSIBILITY BLOCK] Schedule limit hit. Blocking app launch: $packageName")
-                            
-                            db.auditLogDao().insertLog(
-                                AuditLogEntity(
-                                    eventType = "ACCESSIBILITY_BLOCK",
-                                    message = "Block rule active for ${schedule.targetName}. Blocked launch: $packageName",
-                                    isSynced = false
-                                )
-                            )
-
+                            logBlock(db, "ACCESSIBILITY_BLOCK", "Schedule limit hit. Blocking app launch: $packageName")
                             launchLockScreen()
                             break
                         }
                     } else {
-                        // Day does not match, so app is blocked
-                        Log.w(TAG, "[ACCESSIBILITY BLOCK] Schedule limit hit (Day mismatch). Blocking app launch: $packageName")
-                        db.auditLogDao().insertLog(
-                            AuditLogEntity(
-                                eventType = "ACCESSIBILITY_BLOCK",
-                                message = "Block rule active for ${schedule.targetName} (Day mismatch). Blocked launch: $packageName",
-                                isSynced = false
-                            )
-                        )
+                        logBlock(db, "ACCESSIBILITY_BLOCK", "Schedule limit hit (Day mismatch). Blocking app launch: $packageName")
                         launchLockScreen()
                         break
                     }
@@ -189,6 +184,39 @@ class MyAccessibilityService : AccessibilityService() {
                 )
             }
         }
+    }
+
+    private fun isAccessibilitySettingsPackage(packageName: String): Boolean {
+        val settingsAccessibility = listOf(
+            "com.android.settings",
+            "com.google.android.gms",
+            "com.android.settings.Settings\$AccessibilitySettingsActivity"
+        )
+        return settingsAccessibility.any { packageName == it || packageName.startsWith(it) }
+    }
+
+    private fun isDevToolsPackage(packageName: String): Boolean {
+        return packageName == "com.android.settings" && packageName.contains("development", ignoreCase = true) ||
+               packageName == "com.android.settings" && packageName.contains("aboutphone", ignoreCase = true) ||
+               packageName.contains("adb", ignoreCase = true) ||
+               packageName.contains("developer", ignoreCase = true)
+    }
+
+    private fun isPackageInstallerPackage(packageName: String): Boolean {
+        return packageName.contains("packageinstaller", ignoreCase = true) ||
+               packageName.contains("uninstaller", ignoreCase = true) ||
+               packageName == "com.google.android.packageinstaller" ||
+               packageName == "com.android.packageinstaller"
+    }
+
+    private suspend fun logBlock(db: AppDatabase, type: String, message: String) {
+        db.auditLogDao().insertLog(
+            AuditLogEntity(
+                eventType = type,
+                message = message,
+                isSynced = false
+            )
+        )
     }
 
     private fun launchLockScreen() {

@@ -59,6 +59,38 @@ class MainActivity : ComponentActivity() {
       // 2. Request ignoring battery optimizations to prevent background policy enforcement termination
       requestIgnoreBatteryOptimizations()
 
+      // 2b. Request WRITE_SETTINGS permission (required to enforce global/system settings tables).
+      //      WRITE_SECURE_SETTINGS is a signature-level permission and can only be granted
+      //      when the app is a Device Owner / profile owner; otherwise it remains unavailable.
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+          !android.provider.Settings.System.canWrite(applicationContext)) {
+          try {
+              val intent = Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                  data = Uri.parse("package:$packageName")
+                  addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              }
+              startActivity(intent)
+          } catch (e: Exception) {
+              Log.e("MainActivity", "Failed to launch WRITE_SETTINGS intent", e)
+          }
+      }
+
+      // 2c. Request exact alarm permission on Android 12+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+          if (!alarmManager.canScheduleExactAlarms()) {
+              try {
+                  val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                      data = Uri.parse("package:$packageName")
+                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  }
+                  startActivity(intent)
+              } catch (e: Exception) {
+                  Log.e("MainActivity", "Failed to launch SCHEDULE_EXACT_ALARM intent", e)
+              }
+          }
+      }
+
       // 3. Start the Foreground Task Monitor Service to continuously enforce overlays
       ForegroundTaskMonitorService.start(applicationContext)
 
