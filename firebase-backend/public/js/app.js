@@ -5,6 +5,7 @@
 
 // --- Firebase Configuration & Initialization ---
 const DEFAULT_CONFIG = {
+<<<<<<< ours
     databaseURL: "https://dbs-familyguard-default-rtdb.firebaseio.com",
     apiKey: "",
     authDomain: "",
@@ -12,6 +13,16 @@ const DEFAULT_CONFIG = {
     storageBucket: "",
     messagingSenderId: "",
     appId: ""
+=======
+    databaseURL: "https://dbfamilyguard.europe-west1.firebasedatabase.app",
+    apiKey: "AIzaSyDPRkFj1trkSOHLClmCuhmrcj1Yoyvch4Q",
+    authDomain: "dbfamilyguard.firebaseapp.com",
+    projectId: "dbfamilyguard",
+    storageBucket: "dbfamilyguard.firebasestorage.app",
+    messagingSenderId: "833618312649",
+    appId: "1:833618312649:web:24f6a58cda43f3680f3c18",
+    measurementId: "G-9E1FV24V20"
+>>>>>>> theirs
 };
 
 let currentConfig = { ...DEFAULT_CONFIG };
